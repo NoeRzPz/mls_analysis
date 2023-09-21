@@ -1,0 +1,222 @@
+---
+title: "Traits exploratory analysis"
+output: word_document
+date: "2023-09-21"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load packages
+
+```{r libraries}
+library(tidyverse)
+#options(readr.num_columns = 0)
+library(ggpubr)
+```
+
+## Load data
+
+```{r input data}
+anage <- read_tsv("~/mls_analysis/data/anage_build15.txt", 
+                  col_names = T, 
+                  col_types = list(
+                    "References" = col_character(),   # Needs to be specified or else its interpreted as <int>
+                    "Sample size" = col_factor(c("tiny", "small", "medium", "large", "huge"), ordered = T),
+                    "Data quality" = col_factor(c("low", "questionable", "acceptable", "high"), ordered = T)
+                    )
+                  )
+```
+
+
+```{r chordata_cor}
+anage_chordata <- anage %>% 
+  filter(Phylum == "Chordata",
+    !is.na(`Adult weight (g)`),
+    !is.na(`Maximum longevity (yrs)`))
+
+# Correlation plot
+```
+
+
+```{r chordata_plot}
+# Plot
+p.chordata <- anage_chordata %>% 
+  ggplot(
+    aes(`Adult weight (g)`, `Maximum longevity (yrs)`, color = Class)) +
+  geom_point(size = 0.5) +
+  scale_x_log10() +
+  scale_y_log10() +
+  geom_smooth(
+    method = 'lm', 
+    aes(`Adult weight (g)`, `Maximum longevity (yrs)`), 
+    inherit.aes = FALSE,
+    col = "black") +
+  labs(
+    title = 'Chordates Adult Weight vs Lifespan',
+    y = 'Adult Weight - log(g)',
+    x = 'Maximum Longevity - log(yrs) '
+  ) +
+  theme_classic() + 
+  labs_pubr()
+
+p.chordata
+```
+
+```{r mammals}
+# Select all mammals with values for body mass and lifespan
+anage_mammals <- anage_chordata %>% 
+  filter(Class == 'Mammalia')
+
+# Plot
+p.mammalia <- anage_mammals %>% 
+  ggplot(
+    aes(x = `Adult weight (g)`, y = `Maximum longevity (yrs)`, color = Order, text = str_glue("Common Name: {`Common name`}<br>Data Quality: {`Data quality`}<br>Sample size: {`Sample size`}"))
+  ) +
+  geom_point(size = 1) +
+  scale_x_log10() +
+  scale_y_log10() +
+  geom_smooth(
+    method = 'lm', 
+    aes(`Adult weight (g)`, `Maximum longevity (yrs)`), 
+    inherit.aes = FALSE,
+    col = "black") +
+  labs( x = 'Adult Weight - log(g)',
+    y = 'Maximum Longevity\nlog(years) ',
+    caption = "Human Ageing Genomic Resources: AnAge Build 15") +
+  theme_classic() + 
+  labs_pubr() +
+  theme(
+    legend.position = "bottom",
+    text = element_text(size = 18))
+
+p.mammalia
+```
+
+```{r primates}
+# Select all mammals with values for body mass and lifespan
+anage_primates <- anage_mammals %>% 
+  filter(Order == 'Primates')
+
+# Plot
+primates <- anage_primates %>% 
+  ggplot(aes(x = `Adult weight (g)`, y = `Maximum longevity (yrs)`, color = Family, text = str_glue("Common Name: {`Common name`}<br>Data Quality: {`Data quality`}<br>Sample size: {`Sample size`}"))) +
+  geom_point(size = rel(2)) +
+  scale_x_log10() +
+  scale_y_log10() +
+  geom_smooth(
+    method = 'lm', 
+    aes(`Adult weight (g)`, `Maximum longevity (yrs)`), 
+    inherit.aes = FALSE,
+    col = "black") +
+  labs(x = 'Adult Weight - log(g)',
+    y = 'Maximum Longevity log(years) ',
+    caption = "Human Ageing Genomic Resources: AnAge Build 15"
+  ) +
+  theme_classic() + 
+  labs_pubr() +
+  theme(
+    legend.position = "right",
+    text = element_text(size = 18))
+
+primates
+```
+
+```{r}
+# Primates plots
+primates <- anage_primates %>% 
+  group_by(Family) %>%  # Group by Family
+  mutate(MedianFamLongevity = median(`Maximum longevity (yrs)`)) %>% 
+  ggplot(aes(y = reorder(Family,  MedianFamLongevity), x = `Maximum longevity (yrs)`, color = Family)) +
+  geom_point(size = rel(2)) +
+  geom_vline(xintercept = median(anage_primates$`Maximum longevity (yrs)`), linetype = "dashed", color = "grey", size = 1) +
+  labs(y = 'Family',
+    x = 'Maximum Longevity',
+    caption = "Human Ageing Genomic Resources: AnAge Build 15"
+  ) +
+  theme_classic() + 
+  labs_pubr() +
+  theme(
+    legend.position = "none",
+    text = element_text(size = 18)) 
+
+primates
+```
+
+
+
+
+```{r}
+# Primates plot logMLS
+anage_primates <- anage_primates %>% 
+  mutate(Log1OMLS = log10(`Maximum longevity (yrs)`)) 
+```
+
+```{r}
+primateslog <- anage_primates %>%   
+  group_by(Family) %>%    # Group by Family
+  mutate(MedianFamLongevity = median(Log1OMLS)) %>% 
+  ggplot(aes(y = reorder(Family,  MedianFamLongevity), x = Log1OMLS, color = Family)) +
+  geom_point(size = rel(2)) +
+  geom_vline(xintercept = median(anage_primates$Log1OMLS), linetype = "dashed", color = "grey", size = 1) +
+  labs(y = 'Family',
+    x = 'Log10(Maximum Longevity)',
+    caption = "Human Ageing Genomic Resources: AnAge Build 15"
+  ) +
+  theme_classic() + 
+  labs_pubr() +
+  theme(
+    legend.position = "none",
+    text = element_text(size = 18)) 
+
+primateslog
+```
+
+
+```{r}
+# Mammals plots
+mammals <- anage_mammals %>% 
+  group_by(Order) %>%  # Group by Family
+  mutate(MedianOrderLongevity = median(`Maximum longevity (yrs)`)) %>% 
+  ggplot(aes(y = reorder(Order,  MedianOrderLongevity), x = `Maximum longevity (yrs)`, color = Order)) +
+  geom_point(size = rel(2)) +
+  geom_vline(xintercept = median(anage_primates$`Maximum longevity (yrs)`), linetype = "dashed", color = "grey", size = 1) +
+  labs(y = 'Order',
+    x = 'Maximum Longevity',
+    caption = "Human Ageing Genomic Resources: AnAge Build 15"
+  ) +
+  theme_classic() + 
+  labs_pubr() +
+  theme(
+    legend.position = "none",
+    text = element_text(size = 18)) 
+
+mammals
+```
+
+
+```{r}
+anage_mammals <- anage_mammals %>% 
+  mutate(Log1OMLS = log10(`Maximum longevity (yrs)`)) 
+# Mammals plots for log MLS
+mammalslog <- anage_mammals %>% 
+  group_by(Order) %>%  # Group by Family
+  mutate(MedianOrderLongevity = median(Log1OMLS)) %>% 
+  ggplot(aes(y = reorder(Order,  MedianOrderLongevity), x = Log1OMLS, color = Order)) +
+  geom_point(size = rel(2)) +
+  geom_vline(xintercept = median(anage_primates$Log1OMLS), linetype = "dashed", color = "grey", size = 1) +
+  labs(y = 'Order',
+    x = 'Log10(Maximum Longevity)',
+    caption = "Human Ageing Genomic Resources: AnAge Build 15"
+  ) +
+  theme_classic() + 
+  labs_pubr() +
+  theme(
+    legend.position = "none",
+    text = element_text(size = 18)) 
+
+mammalslog
+```
+
+
