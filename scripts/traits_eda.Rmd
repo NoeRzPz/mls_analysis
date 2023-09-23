@@ -12,8 +12,11 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```{r libraries}
 library(tidyverse)
-#options(readr.num_columns = 0)
 library(ggpubr)
+library(FactoMineR)
+library(factoextra)
+library(corrplot)
+library(GGally)
 ```
 
 ## Load data
@@ -24,9 +27,7 @@ anage <- read_tsv("~/mls_analysis/data/anage_build15.txt",
                   col_types = list(
                     "References" = col_character(),   # Needs to be specified or else its interpreted as <int>
                     "Sample size" = col_factor(c("tiny", "small", "medium", "large", "huge"), ordered = T),
-                    "Data quality" = col_factor(c("low", "questionable", "acceptable", "high"), ordered = T)
-                    )
-                  )
+                    "Data quality" = col_factor(c("low", "questionable", "acceptable", "high"), ordered = T)))
 ```
 
 
@@ -36,7 +37,18 @@ anage_chordata <- anage %>%
     !is.na(`Adult weight (g)`),
     !is.na(`Maximum longevity (yrs)`))
 
+#Check continuous variables distribution
+anage_chordata %>% 
+  select(`Adult weight (g)`, `Maximum longevity (yrs)`) %>%
+  ggpairs()
+
 # Correlation plot
+cor_numer <- anage_chordata %>% 
+  select(`Adult weight (g)`, `Maximum longevity (yrs)`) %>% # select_if(is.numeric) 
+  drop_na() %>%
+  cor(., method = "spearman")
+corrplot.mixed(cor_numer, number.digits = 2, tl.col = "black") # Set the color of text labels for correlation numbers
+# variables outside diagonal tl.pos = "lt" 
 ```
 
 
@@ -55,8 +67,8 @@ p.chordata <- anage_chordata %>%
     col = "black") +
   labs(
     title = 'Chordates Adult Weight vs Lifespan',
-    y = 'Adult Weight - log(g)',
-    x = 'Maximum Longevity - log(yrs) '
+    y = 'Log10(Adult Weight)',
+    x = 'Log10(Maximum Longevity)'
   ) +
   theme_classic() + 
   labs_pubr()
@@ -71,9 +83,7 @@ anage_mammals <- anage_chordata %>%
 
 # Plot
 p.mammalia <- anage_mammals %>% 
-  ggplot(
-    aes(x = `Adult weight (g)`, y = `Maximum longevity (yrs)`, color = Order, text = str_glue("Common Name: {`Common name`}<br>Data Quality: {`Data quality`}<br>Sample size: {`Sample size`}"))
-  ) +
+  ggplot(aes(x = `Adult weight (g)`, y = `Maximum longevity (yrs)`, color = Order)) +
   geom_point(size = 1) +
   scale_x_log10() +
   scale_y_log10() +
@@ -82,14 +92,15 @@ p.mammalia <- anage_mammals %>%
     aes(`Adult weight (g)`, `Maximum longevity (yrs)`), 
     inherit.aes = FALSE,
     col = "black") +
-  labs( x = 'Adult Weight - log(g)',
-    y = 'Maximum Longevity\nlog(years) ',
+  labs( x = 'Log10(Adult Weight)',
+    y = 'Log10(Maximum Longevity)',
     caption = "Human Ageing Genomic Resources: AnAge Build 15") +
   theme_classic() + 
   labs_pubr() +
   theme(
     legend.position = "bottom",
-    text = element_text(size = 18))
+    text = element_text(size = 16),
+    plot.caption = element_text(size = 10))
 
 p.mammalia
 ```
@@ -101,8 +112,8 @@ anage_primates <- anage_mammals %>%
 
 # Plot
 primates <- anage_primates %>% 
-  ggplot(aes(x = `Adult weight (g)`, y = `Maximum longevity (yrs)`, color = Family, text = str_glue("Common Name: {`Common name`}<br>Data Quality: {`Data quality`}<br>Sample size: {`Sample size`}"))) +
-  geom_point(size = rel(2)) +
+  ggplot(aes(x = `Adult weight (g)`, y = `Maximum longevity (yrs)`, color = Family)) +
+  geom_point(size = 1) +
   scale_x_log10() +
   scale_y_log10() +
   geom_smooth(
@@ -110,65 +121,110 @@ primates <- anage_primates %>%
     aes(`Adult weight (g)`, `Maximum longevity (yrs)`), 
     inherit.aes = FALSE,
     col = "black") +
-  labs(x = 'Adult Weight - log(g)',
-    y = 'Maximum Longevity log(years) ',
+  labs(x = 'Log10(Adult Weight)',
+    y = 'Log10(Maximum Longevity)',
     caption = "Human Ageing Genomic Resources: AnAge Build 15"
   ) +
   theme_classic() + 
   labs_pubr() +
   theme(
     legend.position = "right",
-    text = element_text(size = 18))
+    text = element_text(size = 18),
+    plot.caption = element_text(size = 10))
 
 primates
 ```
 
+PGLS
 ```{r}
-# Primates plots
+library(ape)
+# Load your phylogenetic tree (e.g., in Newick format)
+phylo_tree <- read.tree("my_phylo_tree.nwk")
+bm.mam <- corBrownian(phy = phylo_tree)
+
+# Fit the PGLS model
+library(nmle)
+pgls_model <- gls(`Maximum longevity (yrs)` ~ `Adult weight (g)`, data = anage_mammals, correlation = bm.mam)
+
+# View the results
+plot(pgls_model)
+summary(pgls_model)
+
+# Get residuals from the PGLS model
+pgls_residuals <- residuals(pgls_model)
+```
+
+Maximul lifespan distribution in every primate family:
+
+```{r family distributions}
+# Calculate global median and standard deviation
+global_median <- median(anage_primates$`Maximum longevity (yrs)`)
+global_sd <- sd(anage_primates$`Maximum longevity (yrs)`) # ask if they consider that has to be globally considered between the big ones (en que deberia incluirse la sd global) or is enough that is globally above mean an lo que es necesario es que esté mas de una sd encima de su media
+
 primates <- anage_primates %>% 
   group_by(Family) %>%  # Group by Family
-  mutate(MedianFamLongevity = median(`Maximum longevity (yrs)`)) %>% 
-  ggplot(aes(y = reorder(Family,  MedianFamLongevity), x = `Maximum longevity (yrs)`, color = Family)) +
-  geom_point(size = rel(2)) +
-  geom_vline(xintercept = median(anage_primates$`Maximum longevity (yrs)`), linetype = "dashed", color = "grey", size = 1) +
-  labs(y = 'Family',
-    x = 'Maximum Longevity',
+  mutate(MedianFamLongevity = median(`Maximum longevity (yrs)`),
+         sdFamLongevity = sd(`Maximum longevity (yrs)`),
+         spp_class = case_when(
+           `Maximum longevity (yrs)` < (global_median - global_sd) & `Maximum longevity (yrs)` < (MedianFamLongevity - sdFamLongevity) ~ "Below 1 SD",
+           `Maximum longevity (yrs)` > (global_median + global_sd) & `Maximum longevity (yrs)` > (MedianFamLongevity + sdFamLongevity) ~ "Above 1 SD",
+           TRUE ~ "Within 1 SD")) %>% 
+  ggplot(aes(x = reorder(Family,  MedianFamLongevity), y = `Maximum longevity (yrs)`, color = Family, fill = Family)) +
+  geom_jitter(aes(shape = spp_class), color = "black") +
+  scale_shape_manual(values = c("Below 1 SD" = 22, "Within 1 SD" = 21,"Above 1 SD" = 24)) +
+  stat_summary(fun.y = median, geom = "errorbar",
+               aes(ymax = ..y.., ymin = ..y..), size = 1) +
+  geom_hline(yintercept = global_median, linetype = "dashed", color = "grey", size = 1) +
+  coord_flip() +
+  labs(x = 'Family',
+    y = 'Maximum Longevity',
     caption = "Human Ageing Genomic Resources: AnAge Build 15"
   ) +
   theme_classic() + 
   labs_pubr() +
   theme(
     legend.position = "none",
-    text = element_text(size = 18)) 
+    text = element_text(size = 18),
+    plot.caption = element_text(size = 10))
 
 primates
 ```
-
-
 
 
 ```{r}
 # Primates plot logMLS
 anage_primates <- anage_primates %>% 
   mutate(Log1OMLS = log10(`Maximum longevity (yrs)`)) 
-```
 
-```{r}
+# Calculate global median and standard deviation
+global_median <- median(anage_primates$Log1OMLS)
+global_sd <- sd(anage_primates$Log1OMLS)
+
 primateslog <- anage_primates %>%   
   group_by(Family) %>%    # Group by Family
-  mutate(MedianFamLongevity = median(Log1OMLS)) %>% 
-  ggplot(aes(y = reorder(Family,  MedianFamLongevity), x = Log1OMLS, color = Family)) +
-  geom_point(size = rel(2)) +
-  geom_vline(xintercept = median(anage_primates$Log1OMLS), linetype = "dashed", color = "grey", size = 1) +
-  labs(y = 'Family',
-    x = 'Log10(Maximum Longevity)',
+  mutate(MedianFamLongevity = median(Log1OMLS),
+         sdFamLongevity = sd(Log1OMLS),
+         spp_class = case_when(
+           Log1OMLS < (global_median - global_sd) & Log1OMLS < (MedianFamLongevity - sdFamLongevity) ~ "Below 1 SD",
+           Log1OMLS > (global_median + global_sd) & Log1OMLS > (MedianFamLongevity + sdFamLongevity) ~ "Above 1 SD",
+           TRUE ~ "Within 1 SD")) %>% 
+  ggplot(aes(x = reorder(Family,  MedianFamLongevity), y = Log1OMLS, color = Family, fill = Family)) +
+  geom_jitter(aes(shape = spp_class), color = "black") +
+  scale_shape_manual(values = c("Below 1 SD" = 22, "Within 1 SD" = 21,"Above 1 SD" = 24)) +
+  stat_summary(fun.y = median, geom = "errorbar",
+               aes(ymax = ..y.., ymin = ..y..), size = 1) +
+  geom_hline(yintercept = global_median, linetype = "dashed", color = "grey", size = 1) +
+  coord_flip() +
+  labs(x = 'Family',
+    y = 'Log10(Maximum Longevity)',
     caption = "Human Ageing Genomic Resources: AnAge Build 15"
   ) +
   theme_classic() + 
   labs_pubr() +
   theme(
     legend.position = "none",
-    text = element_text(size = 18)) 
+    text = element_text(size = 18),
+    plot.caption = element_text(size = 10))
 
 primateslog
 ```
@@ -176,47 +232,94 @@ primateslog
 
 ```{r}
 # Mammals plots
+# Calculate global median and standard deviation
+global_median <- median(anage_mammals$`Maximum longevity (yrs)`)
+global_sd <- sd(anage_mammals$`Maximum longevity (yrs)`) # ask if they consider that has to be globally considered between the big ones (en que deberia incluirse la sd global) or is enough that is globally above mean an lo que es necesario es que esté mas de una sd encima de su media
+
 mammals <- anage_mammals %>% 
-  group_by(Order) %>%  # Group by Family
-  mutate(MedianOrderLongevity = median(`Maximum longevity (yrs)`)) %>% 
-  ggplot(aes(y = reorder(Order,  MedianOrderLongevity), x = `Maximum longevity (yrs)`, color = Order)) +
-  geom_point(size = rel(2)) +
-  geom_vline(xintercept = median(anage_primates$`Maximum longevity (yrs)`), linetype = "dashed", color = "grey", size = 1) +
-  labs(y = 'Order',
-    x = 'Maximum Longevity',
+  group_by(Order) %>%  # Group by Order
+  mutate(MedianOrderLongevity = median(`Maximum longevity (yrs)`),
+         sdOrderLongevity = sd(`Maximum longevity (yrs)`),
+         spp_class = case_when(
+           `Maximum longevity (yrs)` < (global_median - global_sd) & `Maximum longevity (yrs)` < (MedianOrderLongevity - sdOrderLongevity) ~ "Below 1 SD",
+           `Maximum longevity (yrs)` > (global_median + global_sd) & `Maximum longevity (yrs)` > (MedianOrderLongevity + sdOrderLongevity) ~ "Above 1 SD",
+           TRUE ~ "Within 1 SD")) %>% 
+  ggplot(aes(x = reorder(Order,  MedianOrderLongevity), y = `Maximum longevity (yrs)`, color = Order, fill = Order)) +
+  geom_jitter(aes(shape = spp_class), color = "black") +
+  scale_shape_manual(values = c("Below 1 SD" = 22, "Within 1 SD" = 21,"Above 1 SD" = 24)) +
+  stat_summary(fun.y = median, geom = "errorbar",
+               aes(ymax = ..y.., ymin = ..y..), size = 1) +
+  geom_hline(yintercept = global_median, linetype = "dashed", color = "grey", size = 1) +
+  coord_flip() +
+  labs(x = 'Order',
+    y = 'Maximum Longevity',
     caption = "Human Ageing Genomic Resources: AnAge Build 15"
   ) +
   theme_classic() + 
   labs_pubr() +
   theme(
     legend.position = "none",
-    text = element_text(size = 18)) 
+    text = element_text(size = 18),
+    plot.caption = element_text(size = 10))
 
 mammals
 ```
 
 
 ```{r}
+# Mammals plots for log MLS
 anage_mammals <- anage_mammals %>% 
   mutate(Log1OMLS = log10(`Maximum longevity (yrs)`)) 
-# Mammals plots for log MLS
-mammalslog <- anage_mammals %>% 
-  group_by(Order) %>%  # Group by Family
-  mutate(MedianOrderLongevity = median(Log1OMLS)) %>% 
-  ggplot(aes(y = reorder(Order,  MedianOrderLongevity), x = Log1OMLS, color = Order)) +
-  geom_point(size = rel(2)) +
-  geom_vline(xintercept = median(anage_primates$Log1OMLS), linetype = "dashed", color = "grey", size = 1) +
-  labs(y = 'Order',
-    x = 'Log10(Maximum Longevity)',
+
+# Calculate global median and standard deviation
+global_median <- median(anage_mammals$Log1OMLS)
+global_sd <- sd(anage_mammals$Log1OMLS) # ask if they consider that has to be globally considered between the big ones (en que deberia incluirse la sd global) or is enough that is globally above mean an lo que es necesario es que esté mas de una sd encima de su media
+
+mammals <- anage_mammals %>% 
+  group_by(Order) %>%  # Group by Order
+  mutate(MedianOrderLongevity = median(Log1OMLS),
+         sdOrderLongevity = sd(Log1OMLS),
+         spp_class = case_when(
+           Log1OMLS < (global_median - global_sd) & Log1OMLS < (MedianOrderLongevity - sdOrderLongevity) ~ "Below 1 SD",
+           Log1OMLS > (global_median + global_sd) & Log1OMLS > (MedianOrderLongevity + sdOrderLongevity) ~ "Above 1 SD",
+           TRUE ~ "Within 1 SD")) %>% 
+  ggplot(aes(x = reorder(Order,  MedianOrderLongevity), y = Log1OMLS, color = Order, fill = Order)) +
+  geom_jitter(aes(shape = spp_class), color = "black") +
+  scale_shape_manual(values = c("Below 1 SD" = 22, "Within 1 SD" = 21,"Above 1 SD" = 24)) +
+  stat_summary(fun.y = median, geom = "errorbar",
+               aes(ymax = ..y.., ymin = ..y..), size = 1) +
+  geom_hline(yintercept = global_median, linetype = "dashed", color = "grey", size = 1) +
+  coord_flip() +
+  labs(x = 'Order',
+    y = 'Log10(Maximum Longevity)',
     caption = "Human Ageing Genomic Resources: AnAge Build 15"
   ) +
   theme_classic() + 
   labs_pubr() +
   theme(
     legend.position = "none",
-    text = element_text(size = 18)) 
+    text = element_text(size = 18),
+    plot.caption = element_text(size = 10))
 
-mammalslog
+mammals
+```
+This plots are obtained with factorminer
+```{r}
+res.pca <- anage_primates %>%
+  select_if(is.numeric) %>%
+  PCA(., graph = FALSE)
 ```
 
+The most important (or, contributing) variables can be highlighted on the correlation plot as follow:
+```{r}
+fviz_pca_var(res.pca, col.var = "contrib",
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07")) + theme(panel.grid = element_blank())
+```
+si se hiciera por un factor, como el que usaron ellos de agrupar cada trait en 5 categorias:
+```{r}
+grp <- as.factor(cluster)
+# Color variables by groups
+fviz_pca_var(res.pca, col.var = grp, 
+             palette = c("#0073C2FF", "#EFC000FF", "#868686FF"), legend.title = "Cluster")
+```
 
