@@ -17,9 +17,16 @@ library(FactoMineR)
 library(factoextra)
 library(corrplot)
 library(GGally)
+library(cowplot)
+library(ape)
+#library(nmle)
 ```
 
 ## Load data
+
+We have downloaded `wget https://genomics.senescence.info/species/dataset.zip` build 15 from AnAge website. 
+
+Over 400 new species were added, and hundreds of longevity records and entries were updated with data from over 150 new references. 
 
 ```{r input data}
 anage <- read_tsv("~/mls_analysis/data/anage_build15.txt", 
@@ -30,6 +37,8 @@ anage <- read_tsv("~/mls_analysis/data/anage_build15.txt",
                     "Data quality" = col_factor(c("low", "questionable", "acceptable", "high"), ordered = T)))
 ```
 
+I add the following graphs just in case I have to check more than 2 variables, righ now it doesn't have much sense to use it only for MLS and adult weight 
+(when I have data, decide if I do it individualy instead than with a panel)
 
 ```{r chordata_cor}
 anage_chordata <- anage %>% 
@@ -37,20 +46,23 @@ anage_chordata <- anage %>%
     !is.na(`Adult weight (g)`),
     !is.na(`Maximum longevity (yrs)`))
 
-#Check continuous variables distribution
+# Check continuous variables distribution
 anage_chordata %>% 
   select(`Adult weight (g)`, `Maximum longevity (yrs)`) %>%
   ggpairs()
 
-# Correlation plot
+# Select 2 variables, remove missing variables and calculate spearman correlation from them
 cor_numer <- anage_chordata %>% 
   select(`Adult weight (g)`, `Maximum longevity (yrs)`) %>% # select_if(is.numeric) 
   drop_na() %>%
   cor(., method = "spearman")
+
+#  Correlation plot
 corrplot.mixed(cor_numer, number.digits = 2, tl.col = "black") # Set the color of text labels for correlation numbers
 # variables outside diagonal tl.pos = "lt" 
 ```
 
+Make scatter plot of weight vs MLS in between all chordata animals in database
 
 ```{r chordata_plot}
 # Plot
@@ -58,9 +70,11 @@ p.chordata <- anage_chordata %>%
   ggplot(
     aes(`Adult weight (g)`, `Maximum longevity (yrs)`, color = Class)) +
   geom_point(size = 0.5) +
+  # Represent axis in log scale
   scale_x_log10() +
   scale_y_log10() +
   geom_smooth(
+    # plot linear regression line
     method = 'lm', 
     aes(`Adult weight (g)`, `Maximum longevity (yrs)`), 
     inherit.aes = FALSE,
@@ -75,13 +89,14 @@ p.chordata <- anage_chordata %>%
 
 p.chordata
 ```
+Make scatter plot of weight vs MLS in between all mammals in database
 
 ```{r mammals}
 # Select all mammals with values for body mass and lifespan
 anage_mammals <- anage_chordata %>% 
   filter(Class == 'Mammalia')
 
-# Plot
+# Plot the same way as before
 p.mammalia <- anage_mammals %>% 
   ggplot(aes(x = `Adult weight (g)`, y = `Maximum longevity (yrs)`, color = Order)) +
   geom_point(size = 1) +
@@ -104,6 +119,8 @@ p.mammalia <- anage_mammals %>%
 
 p.mammalia
 ```
+Make scatter plot of weight vs MLS in between all primates in database 
+I select all primates, to make plots that I can compare with the ones from Alejandro
 
 ```{r primates}
 # Select all mammals with values for body mass and lifespan
@@ -135,26 +152,29 @@ primates <- anage_primates %>%
 primates
 ```
 
+
 PGLS
+I add some code to test it when I have the data
+
 ```{r}
-library(ape)
-# Load your phylogenetic tree (e.g., in Newick format)
-phylo_tree <- read.tree("my_phylo_tree.nwk")
-bm.mam <- corBrownian(phy = phylo_tree)
+# Load the phylogenetic tree (e.g., in Newick format)
+#phylo_tree <- read.tree("my_phylo_tree.nwk")
+#bm.mam <- corBrownian(phy = phylo_tree)
 
 # Fit the PGLS model
-library(nmle)
-pgls_model <- gls(`Maximum longevity (yrs)` ~ `Adult weight (g)`, data = anage_mammals, correlation = bm.mam)
+#pgls_model <- gls(`Maximum longevity (yrs)` ~ `Adult weight (g)`, data = anage_mammals, correlation = bm.mam)
 
 # View the results
-plot(pgls_model)
-summary(pgls_model)
+#plot(pgls_model)
+#summary(pgls_model)
 
 # Get residuals from the PGLS model
-pgls_residuals <- residuals(pgls_model)
+#pgls_residuals <- residuals(pgls_model)
 ```
 
-Maximul lifespan distribution in every primate family:
+Maximum lifespan distribution in every primate family:
+I create plots as in Alejandro's paper for primates to compare with his results once I have the data to perform the PGLS an use the residuals of the MLS regressed over body mass
+Ask what the global criteria shoulb be, if the species have to be only above the global median to be considerered extreme long lived plus each family criteria or they need to be above gobal median plus above 1SD of the global median
 
 ```{r family distributions}
 # Calculate global median and standard deviation
@@ -163,17 +183,22 @@ global_sd <- sd(anage_primates$`Maximum longevity (yrs)`) # ask if they consider
 
 primates <- anage_primates %>% 
   group_by(Family) %>%  # Group by Family
+  # Calculate each family median and standar deviation
   mutate(MedianFamLongevity = median(`Maximum longevity (yrs)`),
          sdFamLongevity = sd(`Maximum longevity (yrs)`),
+         # Classify each species in below or above 1 SD 
          spp_class = case_when(
            `Maximum longevity (yrs)` < (global_median - global_sd) & `Maximum longevity (yrs)` < (MedianFamLongevity - sdFamLongevity) ~ "Below 1 SD",
            `Maximum longevity (yrs)` > (global_median + global_sd) & `Maximum longevity (yrs)` > (MedianFamLongevity + sdFamLongevity) ~ "Above 1 SD",
            TRUE ~ "Within 1 SD")) %>% 
   ggplot(aes(x = reorder(Family,  MedianFamLongevity), y = `Maximum longevity (yrs)`, color = Family, fill = Family)) +
   geom_jitter(aes(shape = spp_class), color = "black") +
+  # Represent each species with different shapes according the species clas they belong respect to their MLS
   scale_shape_manual(values = c("Below 1 SD" = 22, "Within 1 SD" = 21,"Above 1 SD" = 24)) +
+  # Draw family median
   stat_summary(fun.y = median, geom = "errorbar",
                aes(ymax = ..y.., ymin = ..y..), size = 1) +
+  # Dray global median
   geom_hline(yintercept = global_median, linetype = "dashed", color = "grey", size = 1) +
   coord_flip() +
   labs(x = 'Family',
@@ -189,7 +214,7 @@ primates <- anage_primates %>%
 
 primates
 ```
-
+Same plot as above but using the log transformed MLS, just in case I needed for the data
 
 ```{r}
 # Primates plot logMLS
@@ -229,6 +254,56 @@ primateslog <- anage_primates %>%
 primateslog
 ```
 
+Create a loop to calculate the extreme species (short and long lived ones) for different thresholds
+
+```{r}
+# Create vector of thresholds
+sd_threshold <- seq(0.05, 2, by = 0.05)
+# Initialized empty vectors for storing number species in each category in each iteration
+N_Species_Increased_MLS <- c()
+N_Species_Decreased_MLS <- c()
+# calculate global median, sd (once I have definitive plots I can remove repeated code)
+global_median <- median(anage_primates$`Maximum longevity (yrs)`)
+global_sd <- sd(anage_primates$`Maximum longevity (yrs)`)
+
+# For each family standar deviation threshold: group primates by family, calculate their median and sd values and create variable spp_class where we store if
+# the species is classify as extreme short, long lived or not extreme
+for (i in sd_threshold) {
+  tmp <- anage_primates %>% 
+    group_by(Family) %>%
+    mutate(MedianFamLongevity = median(`Maximum longevity (yrs)`),
+           sdFamLongevity = i*sd(`Maximum longevity (yrs)`),
+           spp_class = case_when(
+             `Maximum longevity (yrs)` < (global_median - global_sd) & `Maximum longevity (yrs)` < (MedianFamLongevity - sdFamLongevity) ~ "Short MLS",
+             `Maximum longevity (yrs)` > (global_median + global_sd) & `Maximum longevity (yrs)` > (MedianFamLongevity + sdFamLongevity) ~ "Long MLS",
+             TRUE ~ "Not extreme"))
+# we store number species in each category for every threshold tested
+  N_Species_Increased_MLS <- c(N_Species_Increased_MLS, sum(tmp$spp_class == "Long MLS"))
+  N_Species_Decreased_MLS <- c(N_Species_Decreased_MLS, sum(tmp$spp_class == "Short MLS"))
+}
+
+# The vectors N_Species_Increased_MLS and N_Species_Decreased_MLS now have the counts for each threshold and together with the thesholds used, we gather them in a dataframe
+data <- data.frame(
+  sd_threshold,
+  N_Species_Increased_MLS,
+  N_Species_Decreased_MLS)
+
+# Plotting number of increased MLS species vs family threshold used (as in Gerard's paper)
+p1 <- ggplot(data, aes(x = sd_threshold, y = N_Species_Increased_MLS)) +
+  geom_line(color = "red") +
+  labs(x = "SD threshold", y = "n species Increased MLS") +
+  theme_classic()
+
+# Plotting number of decreased MLS species vs family threshold used
+p2 <- ggplot(data, aes(x = sd_threshold, y = N_Species_Decreased_MLS)) +
+  geom_line(color = "blue") +
+  labs(x = "SD threshold", y = "n species Decreased MLS") +
+  theme_classic()
+
+combined_plot <- plot_grid(p1, p2,  ncol = 2)
+combined_plot
+```
+Repeat the 3 same type of plots, but now plotting all mammals
 
 ```{r}
 # Mammals plots
@@ -264,7 +339,6 @@ mammals <- anage_mammals %>%
 
 mammals
 ```
-
 
 ```{r}
 # Mammals plots for log MLS
@@ -303,19 +377,68 @@ mammals <- anage_mammals %>%
 
 mammals
 ```
-This plots are obtained with factorminer
+
 ```{r}
+sd_threshold <- seq(0.05, 2, by = 0.05)
+N_Species_Increased_MLS <- c()
+N_Species_Decreased_MLS <- c()
+global_median <- median(anage_mammals$`Maximum longevity (yrs)`)
+global_sd <- sd(anage_mammals$`Maximum longevity (yrs)`)
+
+for (i in sd_threshold) {
+  tmp <- anage_mammals %>% 
+    group_by(Order) %>%
+    mutate(MedianOrderLongevity = median(`Maximum longevity (yrs)`),
+           sdOrderLongevity = i*sd(`Maximum longevity (yrs)`),
+           spp_class = case_when(
+             `Maximum longevity (yrs)` < (global_median - global_sd) & `Maximum longevity (yrs)` < (MedianOrderLongevity - sdOrderLongevity) ~ "Below 1 SD",
+             `Maximum longevity (yrs)` > (global_median + global_sd) & `Maximum longevity (yrs)` > (MedianOrderLongevity + sdOrderLongevity) ~ "Above 1 SD",
+             TRUE ~ "Within 1 SD"))
+
+  N_Species_Increased_MLS <- c(N_Species_Increased_MLS, sum(tmp$spp_class == "Above 1 SD"))
+  N_Species_Decreased_MLS <- c(N_Species_Decreased_MLS, sum(tmp$spp_class == "Below 1 SD"))
+}
+
+# The vectors N_Species_Increased_MLS and N_Species_Decreased_MLS now have the counts for each threshold.
+data <- data.frame(
+  sd_threshold,
+  N_Species_Increased_MLS,
+  N_Species_Decreased_MLS)
+
+# Plotting
+p1 <- ggplot(data, aes(x = sd_threshold, y = N_Species_Increased_MLS)) +
+  geom_line(color = "red") +
+  labs(x = "SD threshold", y = "n species Increased MLS") +
+  theme_classic()
+
+# Plotting
+p2 <- ggplot(data, aes(x = sd_threshold, y = N_Species_Decreased_MLS)) +
+  geom_line(color = "blue") +
+  labs(x = "SD threshold", y = "n species Decreased MLS") +
+  theme_classic()
+
+combined_plot <- plot_grid(p1, p2,  ncol = 2)
+combined_plot
+```
+
+
+This plot is obtained with factorminer
+
+```{r}
+# Firstt we calculate Principal component analysis with all numeric variables from anAge
 res.pca <- anage_primates %>%
   select_if(is.numeric) %>%
   PCA(., graph = FALSE)
 ```
 
-The most important (or, contributing) variables can be highlighted on the correlation plot as follow:
+The most important (or contributing) variables can be highlighted on the correlation plot as follow:
+
 ```{r}
 fviz_pca_var(res.pca, col.var = "contrib",
              gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07")) + theme(panel.grid = element_blank())
 ```
-si se hiciera por un factor, como el que usaron ellos de agrupar cada trait en 5 categorias:
+si se hiciera por un factor, como el que usaron ellos de agrupar cada trait en 5 categorias, podría adaptar este código:
+
 ```{r}
 grp <- as.factor(cluster)
 # Color variables by groups
