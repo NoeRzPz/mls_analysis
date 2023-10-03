@@ -11,6 +11,12 @@ mamba env create --file envs/eda_r.yaml
 
 We have followed the instructions on `https://github.com/linudz/caastools`  to intall it.
 
+We create conda environment with dependencies needed by CAAStools
+
+```
+mamba env create --file envs/caast_test.yaml
+```
+
 We can run localy the example provided with: 
 
 ```
