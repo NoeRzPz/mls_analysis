@@ -4,9 +4,11 @@ rm(list = ls())
 # Load packages
 library(readr)
 library(tidyverse)
-library(AnnotationDbi)
-library(org.Hs.eg.db)
+library(gt)
+#library(AnnotationDbi)
+#library(org.Hs.eg.db)
 library(clusterProfiler, quietly = TRUE) 
+
 
 # Directories setting up
 workingDir <- getwd()
@@ -35,6 +37,57 @@ longevity__nominal <- left_join(longevity_nominal.05, bootstrap_df[, c("X1", "X4
 longevity_nominal.05 <- longevity__nominal %>%
   rename(adj.pval = X4) %>%
   filter(adj.pval <= 0.05)
+
+# Create a table like the one in Farre's paper:
+# Summarize the Data
+summary_data <- longevity__nominal %>%
+  group_by(Scenario) %>%
+  # Summarize discovery data
+  summarize(
+    CAAS_discov = n(),
+    Genes_discov = n_distinct(Gene),
+    CAAS_valid = sum(X4 <= 0.05, na.rm = TRUE), # Count instances where X4 is <= 0.05
+    # Count unique genes where X4 is <= 0.05
+    Genes_valid = n_distinct(Gene[X4 <= 0.05])) %>% 
+  # Calculate the percentage for validated CAAS and Genes
+  mutate(CAAS_valid_perc = CAAS_valid / CAAS_discov * 100,
+         Genes_valid_perc = Genes_valid / Genes_discov * 100,
+         CAAS_valid = paste0(CAAS_valid, " (", sprintf("%.1f", CAAS_valid_perc), "%)"),
+         Genes_valid = paste0(Genes_valid, " (", sprintf("%.1f", Genes_valid_perc), "%)")) %>%
+  select(-CAAS_valid_perc, -Genes_valid_perc)
+summary_data
+
+# Formatting the table using gt
+table_display <- summary_data %>%
+  gt() %>%
+  # Set table title
+  tab_header(title = "Table. Lists of Discovered and Validated CAAS and Genes") %>%
+  # Set column labels
+  cols_label(
+    Scenario = "Scenario",
+    CAAS_discov = "CAAS",
+    Genes_discov = "Genes",
+    CAAS_valid = "CAAS",
+    Genes_valid = "Genes") %>%
+  # Group columns under 'Discovered' and 'Validated'
+  tab_spanner(
+    label = "Discovered",
+    columns = c("CAAS_discov", "Genes_discov")) %>%
+  tab_spanner(
+    label = "Validated",
+    columns = c("CAAS_valid", "Genes_valid")) %>%
+  # Add calculated numbers and percentages to the table
+  fmt_number(
+    columns = c("CAAS_discov", "Genes_discov", "CAAS_valid", "Genes_valid"),
+    decimals = 0) %>%
+  # Add the footnote
+  tab_footnote(
+    footnote = "NOTE.-Numbers in parentheses represent the percentage of bootstraped validated positions.",
+    locations = cells_body(columns = c("CAAS_valid", "Genes_valid")))
+
+# Display the table
+table_display
+
 
 # Save unique RefSeq IDs
 refseq_id <- unique(longevity_nominal.05$Gene)
