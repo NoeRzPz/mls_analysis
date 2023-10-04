@@ -20,6 +20,7 @@ library(GGally)
 library(cowplot)
 library(ape)
 #library(nmle)
+library(gt)
 ```
 
 ## Load data
@@ -214,6 +215,45 @@ primates <- anage_primates %>%
 
 primates
 ```
+
+```{r}
+# Clean and Summarize the Data
+summary_data <- anage_primates %>%
+  group_by(Family) %>%
+  # Summarize data
+  summarize(
+    n = n(),
+    MLS_Mean = mean(`Maximum longevity (yrs)`, na.rm = TRUE),
+    MLS_SD = sd(`Maximum longevity (yrs)`, na.rm = TRUE),
+    min_MLS = min(`Maximum longevity (yrs)`, na.rm = TRUE),
+    max_MLS = max(`Maximum longevity (yrs)`, na.rm = TRUE))  %>% 
+  # Compute the MLS Limits
+  mutate(MLS_Limits = paste(min_MLS, "-", max_MLS))
+summary_data
+
+# Use the gt function to create the table
+table_display <- summary_data %>%
+  select(Family,n,MLS_Mean,MLS_SD, MLS_Limits) %>%
+  gt() %>%
+  tab_header(title = "Table. Mean MLS Computed Using All Records from the Primate Database") %>%
+  
+  # Formatting columns for better display
+  fmt_number(columns = c("n", "MLS_Mean", "MLS_SD"), decimals = 2) %>%
+  
+  # Adding and removing table lines
+  tab_options(
+    table.border.top.style = "none",  # Remove the top border
+    table.border.bottom.style = "solid",
+    table.border.bottom.width = 2,
+    column_labels.border.top.style = "double",
+    column_labels.border.bottom.style = "double"
+  )
+
+# Display the table
+table_display
+```
+
+
 Same plot as above but using the log transformed MLS, just in case I needed for the data
 
 ```{r}
