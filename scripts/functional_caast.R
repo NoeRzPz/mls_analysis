@@ -8,40 +8,59 @@ library(AnnotationDbi)
 library(org.Hs.eg.db)
 library(clusterProfiler, quietly = TRUE) 
 
+# Directories setting up
+workingDir <- getwd()
+dataDir <- file.path(workingDir, "data")
+resultsDir <- file.path(workingDir,"out") 
+
 # Load data 
-# I start with the discovery dataframe (I have to use data after bootstraping to filter them )
-longevity_farre.discov <- read_delim("data/longevity.farre2021.nofilter.tab", 
+# discovery data frame 
+longevity_farre.discov <- read_delim(file.path(dataDir,"longevity.farre2021.nofilter.tab"), 
                                            delim = "\t", escape_double = FALSE, 
                                            trim_ws = TRUE)
-longevity_farre.discov$adj.pval <- p.adjust(longevity_farre.discov$Pvalue, method = "BH",  n = length(longevity_farre.discov$Pvalue))
-longevity_sigf.05 <- longevity_farre.discov %>%
+# guided bootstrap data frame
+bootstrap_df <- read_delim(file.path(dataDir,"guided.tab"), delim = "\t", escape_double = FALSE, 
+                           trim_ws = TRUE, col_names = FALSE)
+  
+
+# Keep nominal significant results
+longevity_nominal.05 <- longevity_farre.discov %>%
+  filter(Pvalue <= 0.05) %>%
+  mutate(id2 = paste(Gene, Position, sep = "@"))
+
+# Perform left join nominal significant dataframe with the info about their bootstrap pvalue from bootstrap dataframe
+longevity__nominal <- left_join(longevity_nominal.05, bootstrap_df[, c("X1", "X4")],  by = c("id2" = "X1"))
+
+# Keep bootstrap significant results
+longevity_nominal.05 <- longevity__nominal %>%
+  rename(adj.pval = X4) %>%
   filter(adj.pval <= 0.05)
 
-head(longevity_sigf.05)
+# Save unique RefSeq IDs
+refseq_id <- unique(longevity_nominal.05$Gene)
 
-# Query to Translate RefSeq to Ensbl, Entrez:
-refseq_id <- unique(longevity_sigf.05$Gene)
-
-# With bitr I obtain desired anotations
+# Obtain desired types of IDs from the RefSeq IDs from significant genes
 ann <- bitr(refseq_id, fromType = "REFSEQ", toType =  c("REFSEQ","ENSEMBL","ENTREZID", "SYMBOL"), OrgDb = org.Hs.eg.db)
-background_genes <- bitr(unique(longevity_farre.discov$Gene), fromType = "REFSEQ", toType =  c("REFSEQ","ENSEMBL","ENTREZID", "SYMBOL"), OrgDb = org.Hs.eg.db)
-#the biomaRt package queries the Ensembl database, which might not always have the latest NCBI data. always cross-check your results and update the BioMart data when needed.
 
+# Do the same for all genes studied
+background_genes <- bitr(unique(longevity_farre.discov$Gene), fromType = "REFSEQ", toType =  c("REFSEQ","ENSEMBL","ENTREZID", "SYMBOL"), OrgDb = org.Hs.eg.db)
+
+# Check if it has NAs
+table(is.na(background_genes$ENTREZID))
+# omit any NA values 
+entrez_IDs <- na.omit(ann$ENTREZID)
 # OVER REPRESENTATION ANALYSIS (ORA)
   
 #  To determine what a priori defined gene sets  are more represented that we could expect by chance in our subset of significant genes 
 
 # We provide ENSEMBL IDs of our significant genes.  Specify option readable TRUE to translate ENSEMBL  IDs to gene symbols
 
-#Especificamos que calcule el ORA para los  procesos biológicos (BP) de GO, e empleamos minGSSize y maxGSSize para restringir el tamaño de los gene sets.
-#minGSSize, es el tamaño mínimo de genes anotados a un *Ontology term* que será testado (nos interesa decartar los muy pequeños porque alcanzarían fácilmente significancia). maxGSSize es el tamaño máximo de genes anotados que será testado (nos interesa descartar los muy grandes porque serán demasiado generales).
+# Calculate ORA for biological processes (BP) de GO, with minGSSize and maxGSSize to restringe gene sets size
+#minGSSize, is minimal number of genes annotated to an Ontology term  that will be tested (to exclude really small ones because they would reach easily significance). maxGSSize is maximum number of annotated genes that will be tested (to descart really big ones, that will be too general/unspecific)
 
-# Perform left join
-#longevity_sigf.05 <- left_join(longevity_sigf.05, ann , by = c("Gene" = "REFSEQ"), multiple = "all")
+set.seed(123)  #Set random seed, so result doesn't change each time
 
-set.seed(123)  #fijamos la semilla de aleatorización, evitamos que cada vez el resultado pueda variar
-
-ego1 <- enrichGO(gene          = ann$ENSEMBL,
+ego1 <- enrichGO(gene          = unique(ann$ENSEMBL),
                  OrgDb         = org.Hs.eg.db,
                  keyType       = 'ENSEMBL',
                  ont           = "BP",
@@ -52,40 +71,75 @@ ego1 <- enrichGO(gene          = ann$ENSEMBL,
                  qvalueCutoff  = 0.05,
                  readable = TRUE, 
                  universe = background_genes$ENSEMBL)
+# Number significant BP
+dim(ego1) 
 
-dim(ego1) # con dim podemos saber el número de BP significativos 
-
-
-#Empleamos el método `simplify` para eliminar términos redundantes. con 'select_fun' seleccionamos un término representativo de los términos reduntantes por su menor pvalor ajustado. Los términos redundantes serán los que tengan una similitud mayor que 0.7. 
-
+# `simplify` method eliminates redundant terms, with a similarity > than 0.7. 'select_fun' selects as representative term from the redundant ones  the term with the smallest adjusted pvalor. 
 ego1 <- simplify(ego1 , cutoff = 0.7, by = "p.adjust", select_fun = min)
 
-# Indica el número de BP GOs  significativos
+# Number significant BP GOs 
 dim(ego1)
 
-# number of BP significant
+# Capture significant BP 
 sig.BP <- head(ego1, nrow(ego1)) 
 head(sig.BP)  
 
+# Save results table
+write.csv(ego1@result, file.path(resultsDir,"functional/GO_BP.csv"), row.names = FALSE)
+
 #Visualizamos los resultados de forma gráfica, para tener una mejor visión global de los principales procesos afectados por estos genes
-#`goplot` nos devuelve un DAG de los términos GO significativos.
 
-goplot(ego1)
+# Create DAG of significant BP GO terms
+p1 <- goplot(ego1)
+ggsave(plot = p1, filename = file.path(resultsDir,"functional/DAG_GO_BP.tiff"), dpi = 300, units = "in",width = 6, height = 6)
 
-dotplot(ego1, showCategory = 20)
+# Create dot plot of 20 most significant BP GO terms
+p2 <- dotplot(ego1, showCategory = 20, font.size = 5)
+ggsave(plot = p2, filename = file.path(resultsDir,"functional/dotplot_GO_BP.tiff"), dpi = 300, units = "in",width = 6, height = 6)
 
+# Create Emap plot of 20 most significant GO terms
 ego1p <- enrichplot::pairwise_termsim(ego1)
-emapplot(ego1p, cex_label_category = 0.8, showCategory = 20)
+p3 <- emapplot(ego1p, cex.params = list(category_label = 0.5), showCategory = 20)
+ggsave(plot = p3, filename = file.path(resultsDir,"functional/emapplot_GO_BP.tiff"), dpi = 300, units = "in",width = 6, height = 6)
 
-
-cnetplot(ego1, showCategory = 15, cex_label_category = 0.8)
-
+# Cenet plot of 10 most significant BP GO terms
+p4 <- cnetplot(ego1, showCategory = 10, cex.params = list(category_label = 0.6))
+ggsave(plot = p4, filename = file.path(resultsDir,"functional/cnetplot_GO_BP.tiff"), dpi = 300, units = "in",width = 6, height = 6)
 
 # KEGG pathway over-representation analysis
-kk <- enrichKEGG(gene         = ann2$ENSEMBL,
+set.seed(123)
+
+kk <- enrichKEGG(gene         = ann$ENTREZID,
                  organism     = 'hsa',
-                 universe = as.character(background_genes$ENSEMBL),
-                 pvalueCutoff = 0.05)
+                 universe = background_genes$ENTREZID,
+                 pvalueCutoff = 0.05,
+                 qvalueCutoff  = 0.05)
+
+# Save KEGG results table
+write.csv(kk@result, file.path(resultsDir,"fuctional/kegg.csv"), row.names = FALSE)
+
+# enrichment map
+ekk <- enrichplot::pairwise_termsim(kk)
+emapplot(ekk, showCategory = 10)
+ggsave(plot = last_plot(), filename = file.path(resultsDir,"functional/emapplot_kegg.tiff"), dpi = 300,units = "in",width = 8, height = 8)
+
+#KEGG module over-representation analysis
+#KEGG Module is a collection of manually defined function units. In some situation, KEGG Modules have a more straightforward interpretation
+mkk <- enrichMKEGG(gene = ann$ENTREZID,
+                   universe = background_genes$ENTREZID,
+                   organism = 'hsa',
+                   pvalueCutoff = 0.05,
+                   qvalueCutoff = 0.25)
+dim(mkk)
+
+# Save significant results
+all.mkk <- head(mkk, nrow(mkk)) 
+head(all.mkk) 
+
+#enrichment map
+mkk3 <- enrichplot::pairwise_termsim(mkk)
+emapplot(mkk3, showCategory = 20)
+
 # Ideas: 
 # Study if those genes share a specific regulation eg:if they have binding sites to common transcription factors
 # Study if they are regulated by the same miRNAs. 
