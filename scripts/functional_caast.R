@@ -45,10 +45,14 @@ ann <- bitr(refseq_id, fromType = "REFSEQ", toType =  c("REFSEQ","ENSEMBL","ENTR
 # Do the same for all genes studied
 background_genes <- bitr(unique(longevity_farre.discov$Gene), fromType = "REFSEQ", toType =  c("REFSEQ","ENSEMBL","ENTREZID", "SYMBOL"), OrgDb = org.Hs.eg.db)
 
-# Check if it has NAs
-table(is.na(background_genes$ENTREZID))
-# omit any NA values 
-entrez_IDs <- na.omit(ann$ENTREZID)
+# Check if there are NAs
+na_count <- sum(is.na(background_genes$ENTREZID))
+# subset dataframe if any NA values are found
+if (na_count > 0) {
+  background_genes <- subset(background_genes, !is.na(ENTREZID))
+  cat("NA values found and rows containing them have been removed.\n")
+} 
+
 # OVER REPRESENTATION ANALYSIS (ORA)
   
 #  To determine what a priori defined gene sets  are more represented that we could expect by chance in our subset of significant genes 
@@ -87,7 +91,7 @@ head(sig.BP)
 # Save results table
 write.csv(ego1@result, file.path(resultsDir,"functional/GO_BP.csv"), row.names = FALSE)
 
-#Visualizamos los resultados de forma gráfica, para tener una mejor visión global de los principales procesos afectados por estos genes
+# Viaulize results graphically, to better understand main processes affected by these genes:
 
 # Create DAG of significant BP GO terms
 p1 <- goplot(ego1)
