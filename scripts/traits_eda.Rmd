@@ -38,90 +38,113 @@ library(ggnewscale)
 
 ## Load data
 
-We have downloaded `wget https://genomics.senescence.info/species/dataset.zip` build 15 from AnAge website. 
-Over 400 new species were added, and hundreds of longevity records and entries were updated with data from over 150 new references. 
-
 ```{r input data}
-# Import mammals LQ phenotype
+# Import mammals LQ phenotype of sequenced spp
 toga_spp <- read_tsv(file.path(dataDir,"LQ_TOGA_species.tsv"), col_names = T)
+
+# Import mammalian all traits (only phenotypic info no sequences info)
+mammalian_traits <- read_tsv(file.path(dataDir,"Mammalian_LQ_values.txt"), col_names = T)
 
 # Import families df
 spp_family <- read_csv(file.path(dataDir,"spp_family.csv"), col_names = T)
 
 # Load phylogenetic tree 
 primates_tree <- read.tree(file.path(dataDir,"science.abn7829_data_s4.nex.tree"))
-```
 
-Load mammalian all traits
-
-```{r}
-mammalian_traits <- read_tsv(file.path(dataDir,"Mammalian_LQ_values.txt"), col_names = T)
-mammalian_traits <- mammalian_traits  %>%
-  #select(-c("Order tree", "Predicted_MLS","dif","color","outliers"))  %>%
-  filter(Order == "Primates")
-primates_traits <- inner_join(mammalian_traits, spp_family[, -1], by = c("Scientific name" = "query"))
-
-primates_traits <- primates_traits %>%
-  mutate(spp_treeformat = str_replace(`Scientific name`, " ", "_"), 
-         spp_treeformat = str_replace_all(spp_treeformat, "\\s\\w+", "")) %>%
-  mutate(ordering = match(spp_treeformat, pruned_primates.tree$tip.label)) %>%
-  arrange(ordering)  %>%
-  filter(!is.na(ordering))
+#anage_primates <- read_tsv(file.path(dataDir,"anage_build15.txt"), col_names = T, 
+#                  col_types = list(
+#                    "References" = col_character(),   # Needs to be specified or else its interpreted as <int>
+#                    "Sample size" = col_factor(c("tiny", "small", "medium", "large", "huge"), ordered = T),
+#                    "Data quality" = col_factor(c("low", "questionable", "acceptable", "high"), ordered = T))) %>% 
+#  filter(Order == 'Primates',
+#    !is.na(`Adult weight (g)`),
+#    !is.na(`Maximum longevity (yrs)`))
 ```
 
 Mammalian exploratory analysis
 
 ```{r formatting data}
-# Select all mammals with values for body mass and lifespan
-anage_mammals <- anage %>% 
-  filter(Class == 'Mammalia') %>%
-  # Standardize MLS and body mass variables
-  mutate(mls_s = scale(`Maximum longevity (yrs)`),
-         adultweight_s = scale(`Adult weight (g)`))
-
 # Select only primates
 primates_lq <- toga_spp %>% 
   filter(ORDER == "Primates") %>%
-  mutate(spp_treeformat = str_replace(SPECIES, " ", "_"),
-         spp_treeformat = str_replace_all(spp_treeformat, "\\s\\w+", "")) %>%
+  mutate(label = str_replace(SPECIES, " ", "_"),
+         label = str_replace_all(label, "\\s\\w+", "")) %>%
   # Remove duplicated spp
   group_by(SPECIES) %>%
   filter(if (any(!is.na(LQ))) {  # If any non-NA LQ value exists in the group
       !is.na(LQ)           # Keep only the non-NA LQ row
     } else {row_number() == 1    # If all are NA, just keep one of them
     }) %>%
-  ungroup() %>%
-  filter(!is.na(LQ))
+  ungroup() #%>%
+  #filter(!is.na(LQ))
+
+# Select only primates
+primates_traits <- mammalian_traits  %>%
+  filter(Order == "Primates") %>% 
+  select(-c("Order tree", "color", "Order", "LQ"))
+
+# Merge both phenotypic dfs to fill missing LQ info (we have 60 spp but 47 with LQ info)
+primates_traits <- left_join(primates_lq, primates_traits, by = c("SPECIES" = "Scientific name"))
+
+# check that for all missing LQ in our original database there was no LQ calculated info in mammalian_traits, so we remove that column 
+#naLQ_recovered_bymerge <- primates_traits2 %>%
+#  filter(is.na(LQ.x)) %>%
+#  select(SPECIES,LQ.x,LQ.y)
+
+# Save info obtained
+#write.csv(naLQ_recovered_bymerge, file.path(resultsDir,"naLQ_recovered_bymerge.csv"), row.names = FALSE)
+
+# Export spp names with info
+write.csv(primates_traits$SPECIES, file.path(resultsDir,"spp_names.csv"), row.names = FALSE)
 
 # Merge both dfs to add family info
-primates_lq <- left_join(primates_lq, spp_family[, -1], by = c("SPECIES" = "query"))
+primates_traits <- left_join(primates_traits, spp_family[, -1], by = c("SPECIES" = "query"))
+
+# Reorder columns
+primates_traits <- primates_traits %>%
+  select(TOGA_ID, ASSEMBLY,ORDER,family,label,`Common name`, everything()) %>%
+  filter(!is.na(LQ))
+
+# Fill phenotypic data from AnAge
+#anage_primates <- anage_primates %>%
+#  select(-c("Kingdom", "Phylum", "Class", "Order","Female maturity (days)","Male maturity (days)","Gestation/Incubation (days)","Weaning (days)" , "Litter/Clutch size","Litters/Clutches per year","Inter-litter/Interbirth interval", "Birth weight (g)", "Weaning weight (g)","Growth rate (1/days)", "Source", "Specimen origin", "Sample size", "Data quality", "IMR (per yr)" , "MRDT (yrs)", "Metabolic rate (W)", "Temperature (K)", "References" )) %>%
+#  mutate(scientificname = paste(Genus, Species))
+
+# Merge both dfs to add extra pheno info
+#primates_traits <- left_join(primates_traits, anage_primates, by = c("SPECIES" = "scientificname"))
+
+# check that for all missing body weight in our original database there was no body weigth calculated info in mammalian_traits, so we remove that column 
+#nabodyweigh_recovered_bymerge <- primates_traits2 %>%
+#  filter(is.na(`Adult weight (g).x`)) %>%
+#  select(SPECIES,`Adult weight (g).x`,`Adult weight (g).y`,`Maximum longevity (yrs).x`,`Maximum longevity (yrs).y`)
+#We don't recover extra info so we discart using AnAge
 
 # Save new df with family info
-#write.csv(primates_lq, file.path(dataDir,"primates_lq_family.csv"), row.names = FALSE)
+#write.csv(primates_traits, file.path(dataDir,"primates_traits_family.csv"), row.names = FALSE)
 
 # Find the common names between tree labels and trait df
-common_names <- intersect(primates_tree$tip.label, primates_lq$spp_treeformat)
+common_names <- intersect(primates_tree$tip.label, primates_traits$label)
 
 # Print alphabetically order different spp, to check for misspell names
-sort(setdiff(primates_tree$tip.label, primates_lq$spp_treeformat))
-sort(setdiff(primates_lq$spp_treeformat, primates_tree$tip.label))
+sort(setdiff(primates_tree$tip.label, primates_traits$label))
+sort(setdiff(primates_traits$label, primates_tree$tip.label))
 # Prune tree, keeping the species from our trait dataframe
 # Drop the tips that are NOT in common_names
 pruned_primates.tree <- drop.tip(primates_tree, setdiff(primates_tree$tip.label, common_names))
 
 # Match the order of pruned_primates.tree$tip.label
-primates_lq <- primates_lq %>%
-  mutate(ordering = match(spp_treeformat, pruned_primates.tree$tip.label)) %>%
+primates_traits <- primates_traits %>%
+  mutate(ordering = match(label, pruned_primates.tree$tip.label)) %>%
   arrange(ordering)  %>%
   filter(!is.na(ordering)) # We keep only spp with representation in the tree
-  #select(-spp_treeformat) %>%# Remove the spp_treeformat column after arranging
+  #select(-label) %>%# Remove the label column after arranging
 ```
 
 Trait distribution
 
 ```{r}
 # Histogram
-hist(primates_lq$LQ, xlab = "LQ", main = "Histogram of primates LQ")
+hist(primates_traits$LQ, xlab = "LQ", main = "Histogram of primates LQ")
 dev.copy(png, file.path(resultsDir,"descriptive/LQ_distribution.png"))
 dev.off()  # Close the PNG device 
 ```
@@ -130,8 +153,8 @@ dev.off()  # Close the PNG device
 Depict trait values on phylogeny
 
 ```{r}
-primates_lq_tree2 <- primates_lq$LQ
-names(primates_lq_tree2) <- primates_lq$spp_treeformat
+primates_lq_tree2 <- primates_traits$LQ
+names(primates_lq_tree2) <- primates_traits$label
 
 png(file.path(resultsDir,"descriptive/dotTree.png"), width = 1200, height = 900, res = 300)
 dotTree(pruned_primates.tree, primates_lq_tree2, length = 10, ftype = "i", cex = 0.7, fsize = 0.6)
@@ -141,13 +164,13 @@ dev.off()
 tree_df <- ggtree::fortify(pruned_primates.tree)
 tree_df$LQ <- primates_lq_tree2[tree_df$label]
 
-global_median <- median(primates_lq$LQ, na.rm = T)
+global_median <- median(primates_traits$LQ, na.rm = T)
 #pruned_primates.tree$LQ <- primates_lq_tree2
 dotColor <- function(x) {
   ifelse(x > global_median, "blue", "lightblue") 
 }
 p <- ggtree(tree_df) + 
-    geom_tiplab() + hexpand(0.4) + # expanding the plotting area so that tree tip labels fit well
+    geom_tiplab(offset = 1) + hexpand(0.4) + # expanding the plotting area so that tree tip labels fit well
   geom_tippoint(aes(color = dotColor(LQ), size = LQ)) +
     scale_color_identity() +
     theme(legend.position = "right")
@@ -157,37 +180,93 @@ ggsave(plot = p, filename = file.path(resultsDir,"descriptive/ggtreedots.tiff"),
 #obj <- contMap(pruned_primates.tree, primates_lq_tree2, plot = FALSE)
 #plot(obj,lwd = 7,xlim = c(-0.2,3.6))
 ```
+convert the phylo object to a tidy data frame, a tbl_tree object
+```{r}
+pruned_primates.tree <- as_tibble(pruned_primates.tree)
+# mapping external data to the tree structure,
+pruned_primates.tree <- full_join(pruned_primates.tree, primates_traits, by = 'label')
+# the tbl_tree object is converted to a treedata object
+pruned_primates.tree <- tidytree::as.treedata(pruned_primates.tree)
+```
+
 
 ```{r}
-circ <- ggtree(pruned_primates.tree, layout = "circular")
-primates_lq_tree2 <- primates_lq %>% 
-  column_to_rownames(var = "spp_treeformat") %>% 
+circ <- ggtree(pruned_primates.tree, layout = "circular") +
+   geom_tippoint(aes(color = family), size = 3)
+
+primates_lq_tree2 <- primates_traits %>% 
+  column_to_rownames(var = "label") %>% 
   select(LQ)
 
 p1 <- gheatmap(circ, primates_lq_tree2, offset = .8, width = .2, colnames_angle = 95, colnames_offset_y = .05) + 
-  scale_fill_viridis_c(option = "A", name = "LQ\nvalue") +
-# probar esto     scale_fill_discrete(
-         name="Phyla",
-         guide=guide_legend(keywidth = 0.8, keyheight = 0.8, ncol = 1))
+  scale_fill_viridis_c(option = "A", name = "LQ\nvalue")  # Color tip labels
+
 p1
 # save plot
-ggsave(plot = p1, filename = file.path(resultsDir,"descriptive/ggtree.tiff"), dpi = 300, units = "in",width = 6, height = 6)
+ggsave(plot = p1, filename = file.path(resultsDir,"descriptive/ggtree_tips.tiff"), dpi = 300, units = "in",width = 6, height = 6)
 ```
+
+
 ```{r}
-# No funciona nada
-#df <- data.frame(
-#  tip.label = names(primates_lq_tree2),
-#  LQ = as.vector(primates_lq_tree2))
-#tree_data <- fortify(pruned_primates.tree, data = df)
-#ggtree(tree_data, aes(color = LQ)) +
-#    scale_color_continuous(low = 'darkgreen', high = 'yellow') +
-#   theme(legend.position = "right")
+circ <- ggtree(pruned_primates.tree, layout = "circular") +
+  geom_tree(aes(color = family), size = 1.5)   # Optional: Color branches/edges
+
+p2 <- gheatmap(circ, primates_lq_tree2, offset = .8, width = .2, colnames_angle = 95, colnames_offset_y = .05) + 
+  scale_fill_viridis_c(option = "A", name = "LQ\nvalue")  # Color tip labels
+
+p2
+# save plot
+ggsave(plot = p1, filename = file.path(resultsDir,"descriptive/ggtree_lines.tiff"), dpi = 300, units = "in",width = 6, height = 6)
+```
+
+```{r}
+ggtree(pruned_primates.tree) + geom_tiplab() + 
+  hexpand(.2) + geom_text(aes(label = ifelse(node <= 38, NA, node)), hjust = -.3) #To get the internal node number
+```
+
+```{r}
+#pruned_primates.tree %>% 
+#  as_tibble
+```
+
+
+```{r}
+internal_nodes <- pruned_primates.tree %>% 
+  as_tibble %>%
+  select(parent) %>%
+  distinct()
+```
+
+```{r}
+tree <- as.phylo(pruned_primates.tree)
+groups_list <- caper::clade.members.list(tree, tips = FALSE,tip.labels = TRUE, include.nodes = TRUE)
+
+# Convert list to dataframe
+groups_df <- map_df(names(groups_list), function(x) {
+  tibble(group = x, N_spp = length(groups_list[[x]]$tips), associated_spp = list(groups_list[[x]]$tips),Intermediate_subnodes = list(groups_list[[x]]$nodes[-1]))
+})
+
+groups_plus4 <- groups_df %>%
+  filter(N_spp >= 4)
 ```
 
 We cut a tree for its age
 
+```{r}
+# Cut tree at internal nodes
+Species_included <- list()
+for (i in internal_nodes) {
+  set.seed(123)
+  tree <- cutPhylo(pruned_primates.tree, node = internal_nodes[i])#
+  Species_included[[i]] <- tree$tip.label
+}
+names(Species_included) <- internal_nodes
+```
+
+
+
 ```{r groups by phylogeny cuts}
-# Cut tree at sequential points 
+# Cut tree at sequential points
 my_cut <- seq(5, 55, by = 5)
 Species_included <- list()
 for (i in seq_along(my_cut)) {
@@ -204,7 +283,7 @@ tree_groups <- stack(Species_included)
 # Rename columns
 colnames(tree_groups) <- c("Species", "Myears_Cut")
 # Add LQ info
-tree_groups <- left_join(tree_groups, primates_lq, by = c("Species" = "spp_treeformat"))
+tree_groups <- left_join(tree_groups, primates_lq, by = c("Species" = "label"))
 
 N_Top_LQ <- c()
 N_Bottom_LQ <- c()
