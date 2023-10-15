@@ -138,6 +138,18 @@ primates_traits <- primates_traits %>%
   arrange(ordering)  %>%
   filter(!is.na(ordering)) # We keep only spp with representation in the tree
   #select(-label) %>%# Remove the label column after arranging
+
+#Create variable called LQoutlier, where  low outliers are below Q1 − 1.5*IQR and high outliers are above Q3 + 1.5*IQR
+Q1 <- quantile(primates_traits$LQ, probs = 0.25, na.rm = T)
+Q3 <- quantile(primates_traits$LQ, probs = 0.75, na.rm = T)
+IQR <- IQR(primates_traits$LQ, na.rm = T)
+
+primates_traits <- primates_traits %>% 
+  mutate(LQoutlier = case_when(
+           LQ < Q1 - (1.5*IQR) ~ "Low_outlier",
+           LQ > Q3 + (1.5*IQR) ~ "High_outlier",
+           TRUE ~ "No"))
+# Alejandro's column outlier was depicting if spp was on the top50, with LQoutlier only homo sapiens is a high_outlier and was on top50 on alejandro's column
 ```
 
 Trait distribution
@@ -182,24 +194,31 @@ ggsave(plot = p, filename = file.path(resultsDir,"descriptive/ggtreedots.tiff"),
 ```
 convert the phylo object to a tidy data frame, a tbl_tree object
 ```{r}
-pruned_primates.tree <- as_tibble(pruned_primates.tree)
-# mapping external data to the tree structure,
-pruned_primates.tree <- full_join(pruned_primates.tree, primates_traits, by = 'label')
+pruned_primates.tree2 <- as_tibble(pruned_primates.tree)
+
+# mapping external data to the tree structure
+pruned_primates.tree2 <- full_join(pruned_primates.tree2, primates_traits, by = 'label') 
+
 # the tbl_tree object is converted to a treedata object
-pruned_primates.tree <- tidytree::as.treedata(pruned_primates.tree)
+pruned_primates.tree2 <- tidytree::as.treedata(pruned_primates.tree2)
 ```
 
 
 ```{r}
-circ <- ggtree(pruned_primates.tree, layout = "circular") +
-   geom_tippoint(aes(color = family), size = 3)
+# Exclude outlier from trait representation
+primates_traits$LQ <- ifelse(primates_traits$LQoutlier == "High_outlier", NA, primates_traits$LQ)
 
 primates_lq_tree2 <- primates_traits %>% 
   column_to_rownames(var = "label") %>% 
   select(LQ)
 
+circ <- ggtree(pruned_primates.tree2, layout = "circular") +
+  # using a different shape to represent outliers
+  geom_tippoint(aes(color = family, shape = ifelse(LQoutlier == "High_outlier", 4, 16), size = 3)) + 
+  scale_shape_identity() +
+  guides(size = "none") #remove size legend
 p1 <- gheatmap(circ, primates_lq_tree2, offset = .8, width = .2, colnames_angle = 95, colnames_offset_y = .05) + 
-  scale_fill_viridis_c(option = "A", name = "LQ\nvalue")  # Color tip labels
+  scale_fill_viridis_c(option = "A", name = "LQ\nvalue", na.value = "grey50") # Color tip labels. Using grey color for NA values (high outliers)
 
 p1
 # save plot
@@ -208,11 +227,11 @@ ggsave(plot = p1, filename = file.path(resultsDir,"descriptive/ggtree_tips.tiff"
 
 
 ```{r}
-circ <- ggtree(pruned_primates.tree, layout = "circular") +
+circ <- ggtree(pruned_primates.tree2, layout = "circular") +
   geom_tree(aes(color = family), size = 1.5)   # Optional: Color branches/edges
 
 p2 <- gheatmap(circ, primates_lq_tree2, offset = .8, width = .2, colnames_angle = 95, colnames_offset_y = .05) + 
-  scale_fill_viridis_c(option = "A", name = "LQ\nvalue")  # Color tip labels
+  scale_fill_viridis_c(option = "A", name = "LQ\nvalue", na.value = "grey50")  
 
 p2
 # save plot
@@ -231,14 +250,14 @@ ggtree(pruned_primates.tree) + geom_tiplab() +
 
 
 ```{r}
-internal_nodes <- pruned_primates.tree %>% 
+internal_nodes <- pruned_primates.tree2 %>% 
   as_tibble %>%
   select(parent) %>%
   distinct()
 ```
 
 ```{r}
-tree <- as.phylo(pruned_primates.tree)
+tree <- as.phylo(pruned_primates.tree2)
 groups_list <- caper::clade.members.list(tree, tips = FALSE,tip.labels = TRUE, include.nodes = TRUE)
 
 # Convert list to dataframe
@@ -250,7 +269,7 @@ groups_plus4 <- groups_df %>%
   filter(N_spp >= 4)
 ```
 
-We cut a tree for its age
+Esto no sirve, hacerlo otra forma
 
 ```{r}
 # Cut tree at internal nodes
@@ -263,6 +282,10 @@ for (i in internal_nodes) {
 names(Species_included) <- internal_nodes
 ```
 
+```{r}
+tree0 <- cutPhylo(pruned_primates.tree, age = 0, keep.lineage = T)
+tree10 <- cutPhylo(pruned_primates.tree, age = 10, keep.lineage = T) # linajes no cortados cómo se representarían?
+```
 
 
 ```{r groups by phylogeny cuts}
@@ -283,11 +306,11 @@ tree_groups <- stack(Species_included)
 # Rename columns
 colnames(tree_groups) <- c("Species", "Myears_Cut")
 # Add LQ info
-tree_groups <- left_join(tree_groups, primates_lq, by = c("Species" = "label"))
+tree_groups <- left_join(tree_groups, primates_traits, by = c("Species" = "label"))
 
 N_Top_LQ <- c()
 N_Bottom_LQ <- c()
-global_median <- median(primates_lq$LQ, na.rm = T)
+global_median <- median(primates_traits$LQ, na.rm = T)
 
 for (i in my_cut) {
   tmp <- tree_groups %>% 
@@ -383,10 +406,10 @@ for (i in my_cut) {
 
 ```{r family distribution}
 # Calculate global median and standard deviation
-global_median <- median(primates_lq$LQ, na.rm = T)
-global_sd <- sd(primates_lq$LQ, na.rm = T) 
+global_median <- median(primates_traits$LQ, na.rm = T)
+global_sd <- sd(primates_traits$LQ, na.rm = T) 
 
-primates <- primates_lq %>% 
+primates <- primates_traits %>% 
   group_by(family) %>%  # Group by Family
   # Calculate each family median and standard deviation
   mutate(MedianFamLQ = median(LQ),
@@ -404,7 +427,7 @@ primates <- primates_lq %>%
   stat_summary(fun.y = median, geom = "errorbar",
                aes(ymax = ..y.., ymin = ..y..), size = 1) +
   # Dray global median
-  geom_hline(yintercept = median(primates_lq$LQ, na.rm = T), linetype = "dashed", color = "grey", size = 1) +
+  geom_hline(yintercept = median(primates_traits$LQ, na.rm = T), linetype = "dashed", color = "grey", size = 1) +
   coord_flip() +
   labs(x = 'Family',
     y = 'Longevity Quotient') +
