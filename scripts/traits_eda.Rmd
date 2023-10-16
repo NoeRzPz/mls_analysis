@@ -18,18 +18,18 @@ resultsDir <- file.path(workingDir,"out")
 
 ## Load packages
 
-```{r libraries, echo=FALSE}
-library(tidyverse, quietly = TRUE)
-library(ggpubr, quietly = TRUE)
-library(FactoMineR, quietly = TRUE)
-library(factoextra, quietly = TRUE)
-library(corrplot, quietly = TRUE)
-library(GGally, quietly = TRUE)
-library(cowplot, quietly = TRUE)
-library(ape, quietly = TRUE)
+```{r libraries, message=FALSE}
+library(tidyverse)
+library(ggpubr)
+library(FactoMineR)
+library(factoextra)
+library(corrplot)
+library(GGally)
+library(cowplot)
+library(ape)
 library(nlme)
-library(gt, quietly = TRUE)
-library(ggtree, quietly = TRUE)
+library(gt)
+library(ggtree)
 library(phytools)
 library(RRphylo)
 library(picante)
@@ -38,7 +38,7 @@ library(ggnewscale)
 
 ## Load data
 
-```{r input data}
+```{r input data, message=FALSE}
 # Import mammals LQ phenotype of sequenced spp
 toga_spp <- read_tsv(file.path(dataDir,"LQ_TOGA_species.tsv"), col_names = T)
 
@@ -63,7 +63,7 @@ primates_tree <- read.tree(file.path(dataDir,"science.abn7829_data_s4.nex.tree")
 
 Mammalian exploratory analysis
 
-```{r formatting data}
+```{r formatting data, message=FALSE}
 # Select only primates
 primates_lq <- toga_spp %>% 
   filter(ORDER == "Primates") %>%
@@ -100,9 +100,21 @@ write.csv(primates_traits$SPECIES, file.path(resultsDir,"spp_names.csv"), row.na
 # Merge both dfs to add family info
 primates_traits <- left_join(primates_traits, spp_family[, -1], by = c("SPECIES" = "query"))
 
+# Imputation: Fill missing LQ with their same genus LQ mean
+# Fill missing LQ values based on the mode of the same genus
+imputed_LQ <- primates_traits %>%
+  mutate(genus = str_replace_all(SPECIES, "\\s\\w+", ""),
+         imputed = ifelse(is.na(LQ), "Yes", "No")) %>%
+  group_by(genus) %>%
+  #checks if there's more than one row in the genus group
+  mutate(LQ = ifelse(n() > 1 & is.na(LQ), mean(LQ, na.rm = T), LQ)) %>%
+  ungroup() %>%
+  select(TOGA_ID, ASSEMBLY,ORDER,Family,label,`Common name`,genus, everything()) %>%
+  filter(!is.na(LQ))
+
 # Reorder columns
 primates_traits <- primates_traits %>%
-  select(TOGA_ID, ASSEMBLY,ORDER,family,label,`Common name`, everything()) %>%
+  select(TOGA_ID, ASSEMBLY,ORDER,Family,label,`Common name`, everything()) %>%
   filter(!is.na(LQ))
 
 # Fill phenotypic data from AnAge
@@ -143,12 +155,19 @@ primates_traits <- primates_traits %>%
 Q1 <- quantile(primates_traits$LQ, probs = 0.25, na.rm = T)
 Q3 <- quantile(primates_traits$LQ, probs = 0.75, na.rm = T)
 IQR <- IQR(primates_traits$LQ, na.rm = T)
+global_median <- median(primates_traits$LQ, na.rm = T)
 
 primates_traits <- primates_traits %>% 
   mutate(LQoutlier = case_when(
            LQ < Q1 - (1.5*IQR) ~ "Low_outlier",
            LQ > Q3 + (1.5*IQR) ~ "High_outlier",
-           TRUE ~ "No"))
+           TRUE ~ "No"),
+         GD = LQ - global_median) %>% 
+  group_by(Family) %>%  # Group by Family
+  # Calculate each family median and standard deviation
+  mutate(MedianFamLQ = median(LQ, na.rm = T),
+         # Calculate each spp LQ family median differences 
+         FD = LQ - MedianFamLQ)
 # Alejandro's column outlier was depicting if spp was on the top50, with LQoutlier only homo sapiens is a high_outlier and was on top50 on alejandro's column
 ```
 
@@ -204,17 +223,18 @@ pruned_primates.tree2 <- tidytree::as.treedata(pruned_primates.tree2)
 ```
 
 
-```{r}
+```{r families as tips plot}
 # Exclude outlier from trait representation
-primates_traits$LQ <- ifelse(primates_traits$LQoutlier == "High_outlier", NA, primates_traits$LQ)
+primates_traits2 <- primates_traits
+primates_traits2$LQ <- ifelse(primates_traits2$LQoutlier == "High_outlier", NA, primates_traits2$LQ)
 
-primates_lq_tree2 <- primates_traits %>% 
+primates_lq_tree2 <- primates_traits2 %>% 
   column_to_rownames(var = "label") %>% 
   select(LQ)
 
 circ <- ggtree(pruned_primates.tree2, layout = "circular") +
   # using a different shape to represent outliers
-  geom_tippoint(aes(color = family, shape = ifelse(LQoutlier == "High_outlier", 4, 16), size = 3)) + 
+  geom_tippoint(aes(color = Family, shape = ifelse(LQoutlier == "High_outlier", 4, 16), size = 3)) + 
   scale_shape_identity() +
   guides(size = "none") #remove size legend
 p1 <- gheatmap(circ, primates_lq_tree2, offset = .8, width = .2, colnames_angle = 95, colnames_offset_y = .05) + 
@@ -226,16 +246,124 @@ ggsave(plot = p1, filename = file.path(resultsDir,"descriptive/ggtree_tips.tiff"
 ```
 
 
-```{r}
+```{r families as edges}
 circ <- ggtree(pruned_primates.tree2, layout = "circular") +
-  geom_tree(aes(color = family), size = 1.5)   # Optional: Color branches/edges
+  geom_tree(aes(color = Family), size = 1.5)   # Color branches/edges
 
 p2 <- gheatmap(circ, primates_lq_tree2, offset = .8, width = .2, colnames_angle = 95, colnames_offset_y = .05) + 
   scale_fill_viridis_c(option = "A", name = "LQ\nvalue", na.value = "grey50")  
 
 p2
 # save plot
-ggsave(plot = p1, filename = file.path(resultsDir,"descriptive/ggtree_lines.tiff"), dpi = 300, units = "in",width = 6, height = 6)
+ggsave(plot = p2, filename = file.path(resultsDir,"descriptive/ggtree_lines.tiff"), dpi = 300, units = "in",width = 6, height = 6)
+```
+
+```{r Global median differences}
+# Exclude outlier from trait representation
+primates_traits2 <- primates_traits
+primates_traits2$GD <- ifelse(primates_traits2$LQoutlier == "High_outlier", NA, primates_traits2$GD)
+
+primates_lq_tree2 <- primates_traits2 %>% 
+  column_to_rownames(var = "label") %>% 
+  select(GD)
+
+circ <- ggtree(pruned_primates.tree2, layout = "circular") +
+  geom_tree(aes(color = Family), size = 1.5)   # Color branches/edges
+
+p3 <- gheatmap(circ, primates_lq_tree2, offset = .8, width = .2, colnames_angle = 95, colnames_offset_y = .05) + 
+  scale_fill_gradient2(name = "GD value", limits = c(-0.9,0.9), na.value = "grey50")
+
+p3
+# save plot
+ggsave(plot = p3, filename = file.path(resultsDir,"descriptive/ggtree_global_median_diff.tiff"), dpi = 300, units = "in",width = 6, height = 6)
+```
+
+```{r Family median differences}
+# Exclude outlier from trait representation
+primates_traits2 <- primates_traits
+primates_traits2$FD <- ifelse(primates_traits2$LQoutlier == "High_outlier", NA, primates_traits2$FD)
+
+primates_lq_tree2 <- primates_traits2 %>% 
+  column_to_rownames(var = "label") %>% 
+  select(FD)
+
+circ <- ggtree(pruned_primates.tree2, layout = "circular") +
+  geom_tree(aes(color = Family), size = 1.5)   # Color branches/edges
+
+p4 <- gheatmap(circ, primates_lq_tree2, offset = .8, width = .2, colnames_angle = 95, colnames_offset_y = .05) + 
+  scale_fill_gradient2(name = "FD value", limits = c(-1.05,1),  na.value = "grey50")
+
+p4
+# save plot
+ggsave(plot = p4, filename = file.path(resultsDir,"descriptive/ggtree_fam_median_diff.tiff"), dpi = 300, units = "in",width = 6, height = 6)
+```
+
+```{r phylogeny with imputed df trait}
+# Find the common names between tree labels and trait df
+common_names <- intersect(primates_tree$tip.label, imputed_LQ$label)
+
+# Print alphabetically order different spp, to check for misspell names
+sort(setdiff(primates_tree$tip.label, imputed_LQ$label))
+sort(setdiff(imputed_LQ$label, primates_tree$tip.label))
+# Prune tree, keeping the species from our trait dataframe
+# Drop the tips that are NOT in common_names
+pruned_primates.impt <- drop.tip(primates_tree, setdiff(primates_tree$tip.label, common_names))
+
+# Match the order of pruned_primates.impt$tip.label
+imputed_LQ <- imputed_LQ %>%
+  mutate(ordering = match(label, pruned_primates.impt$tip.label)) %>%
+  arrange(ordering)  %>%
+  filter(!is.na(ordering))
+
+pruned_primates.impt2 <- as_tibble(pruned_primates.impt)
+
+# mapping external data to the tree structure
+pruned_primates.impt2 <- full_join(pruned_primates.impt2, imputed_LQ, by = 'label') 
+
+# the tbl_tree object is converted to a treedata object
+pruned_primates.impt2 <- tidytree::as.treedata(pruned_primates.impt2)
+# Exclude outlier from trait representation
+imputed_LQ2 <- imputed_LQ  %>%
+  mutate(GD = LQ - global_median,
+         FD = LQ - MedianFamLQ,
+         GD = ifelse(imputed == "Yes" | label == "Homo_sapiens", NA, GD),
+         FD = ifelse(imputed == "Yes" | label == "Homo_sapiens", NA, FD))
+
+imputed_traits2 <- imputed_LQ2 %>% 
+  column_to_rownames(var = "label") %>% 
+  select(GD,FD)
+
+circ <- ggtree(pruned_primates.impt2, layout = "circular") +
+  geom_tree(aes(color = Family), size = 1.5)   # Color branches/edges
+
+p6 <- gheatmap(circ, imputed_traits2, offset = .8, width = .2, colnames_angle = 95, colnames_offset_y = .05) + 
+  scale_fill_gradient2(name = "Median difference",  na.value = "grey50")
+
+p6
+# save plot
+ggsave(plot = p6, filename = file.path(resultsDir,"descriptive/ggtreeimputed_global_median_diff.tiff"), dpi = 300, units = "in",width = 6, height = 6)
+```
+
+
+```{r both median differences}
+# Exclude outlier from trait representation
+primates_traits2 <- primates_traits
+primates_traits2$GD <- ifelse(primates_traits2$LQoutlier == "High_outlier", NA, primates_traits2$GD)
+primates_traits2$FD <- ifelse(primates_traits2$LQoutlier == "High_outlier", NA, primates_traits2$FD)
+
+primates_lq_tree2 <- primates_traits2 %>% 
+  column_to_rownames(var = "label") %>% 
+  select(GD,FD)
+
+circ <- ggtree(pruned_primates.tree2, layout = "circular") +
+  geom_tree(aes(color = Family), size = 1.5)   # Color branches/edges
+
+p5 <- gheatmap(circ, primates_lq_tree2, offset = .8, width = .2, colnames_angle = 95, colnames_offset_y = .05) + 
+  scale_fill_gradient2(name = "Median difference", limits = c(-1.05,1),  na.value = "grey50")
+
+p5
+# save plot
+ggsave(plot = p5, filename = file.path(resultsDir,"descriptive/ggtree_both_median_diff.tiff"), dpi = 300, units = "in",width = 6, height = 6)
 ```
 
 ```{r}
@@ -262,16 +390,20 @@ groups_list <- caper::clade.members.list(tree, tips = FALSE,tip.labels = TRUE, i
 
 # Convert list to dataframe
 groups_df <- map_df(names(groups_list), function(x) {
-  tibble(group = x, N_spp = length(groups_list[[x]]$tips), associated_spp = list(groups_list[[x]]$tips),Intermediate_subnodes = list(groups_list[[x]]$nodes[-1]))
+  tibble(group = x, N_spp = length(groups_list[[x]]$tips), associated_spp = paste(groups_list[[x]]$tips, collapse = ", "),Intermediate_subnodes = paste(groups_list[[x]]$nodes[-1], collapse = ", "))
 })
 
 groups_plus4 <- groups_df %>%
   filter(N_spp >= 4)
+
+# Export to CSV
+write_csv(groups_plus4, file.path(resultsDir,"descriptive/groups_plus4.csv"))
+
 ```
 
 Esto no sirve, hacerlo otra forma
 
-```{r}
+```{r, eval=FALSE}
 # Cut tree at internal nodes
 Species_included <- list()
 for (i in internal_nodes) {
@@ -282,13 +414,13 @@ for (i in internal_nodes) {
 names(Species_included) <- internal_nodes
 ```
 
-```{r}
+```{r, eval=FALSE}
 tree0 <- cutPhylo(pruned_primates.tree, age = 0, keep.lineage = T)
 tree10 <- cutPhylo(pruned_primates.tree, age = 10, keep.lineage = T) # linajes no cortados cómo se representarían?
 ```
 
 
-```{r groups by phylogeny cuts}
+```{r groups by phylogeny cuts, eval=FALSE}
 # Cut tree at sequential points
 my_cut <- seq(5, 55, by = 5)
 Species_included <- list()
@@ -351,7 +483,7 @@ combined_plot
 ggsave(plot = combined_plot, filename = file.path(resultsDir,"descriptive/extreme_milyears.tiff"), dpi = 300, units = "in",width = 6, height = 6)
 ```
 
-```{r different threshold per cut}
+```{r different threshold per cut, eval=FALSE}
 # Create vector of thresholds
 sd_threshold <- seq(0.05, 2, by = 0.05)
 N_Top_LQ <- c()
@@ -404,13 +536,13 @@ for (i in my_cut) {
 ```
 
 
-```{r family distribution}
+```{r LQ family distribution}
 # Calculate global median and standard deviation
 global_median <- median(primates_traits$LQ, na.rm = T)
 global_sd <- sd(primates_traits$LQ, na.rm = T) 
 
 primates <- primates_traits %>% 
-  group_by(family) %>%  # Group by Family
+  group_by(Family) %>%  # Group by Family
   # Calculate each family median and standard deviation
   mutate(MedianFamLQ = median(LQ),
          sdFamLQ = sd(LQ),
@@ -419,15 +551,15 @@ primates <- primates_traits %>%
            LQ < (global_median) & LQ < (MedianFamLQ - sdFamLQ) ~ "Below 1 SD",
            LQ > (global_median) & LQ > (MedianFamLQ + sdFamLQ) ~ "Above 1 SD",
            TRUE ~ "Within 1 SD")) %>% 
-  ggplot(aes(x = reorder(family, ordering), y = LQ, color = family, fill = family)) +
+  ggplot(aes(x = reorder(Family, ordering), y = LQ, color = Family, fill = Family)) +
   geom_jitter(aes(shape = spp_class), size = 3) +
   # Represent each species with different shapes according the species clas they belong respect to their MLS
   scale_shape_manual(values = c("Below 1 SD" = 22, "Within 1 SD" = 21,"Above 1 SD" = 24)) +
   # Draw family median
   stat_summary(fun.y = median, geom = "errorbar",
-               aes(ymax = ..y.., ymin = ..y..), size = 1) +
+               aes(ymax = ..y.., ymin = ..y..), linewidth = 1) +
   # Dray global median
-  geom_hline(yintercept = median(primates_traits$LQ, na.rm = T), linetype = "dashed", color = "grey", size = 1) +
+  geom_hline(yintercept = median(primates_traits$LQ, na.rm = T), linetype = "dashed", color = "grey", linewidth = 1) +
   coord_flip() +
   labs(x = 'Family',
     y = 'Longevity Quotient') +
@@ -471,7 +603,7 @@ dev.off()
 
 Make scatter plot of weight vs MLS in between all mammals in database
 
-```{r mammals}
+```{r mammals, eval=FALSE}
 # Plot the same way as before
 #p.mammalia <- anage_mammals %>% 
 #  ggplot(aes(x = `Adult weight (g)`, y = `Maximum longevity (yrs)`, color = Order)) +
@@ -499,10 +631,10 @@ Make scatter plot of weight vs MLS in between all mammals in database
 Make scatter plot of weight vs MLS in between all primates in database 
 I select all primates, to make plots that I can compare with the ones from Alejandro
 
-```{r primates}
+```{r primates, eval=FALSE}
 # Plot
 primates <- primates_traits %>% 
-  ggplot(aes(x = `Adult weight (g)`, y = `Maximum longevity (yrs)`, color = family)) +
+  ggplot(aes(x = `Adult weight (g)`, y = `Maximum longevity (yrs)`, color = Family)) +
   geom_point(size = 1) +
   scale_x_log10() +
   scale_y_log10() +
@@ -526,78 +658,17 @@ ggsave(plot = primates, filename = file.path(resultsDir,"descriptive/primates_sc
 ```
 
 
-PGLS
-I add some code to test it when I have the data
-
-```{r}
-bm.mam <- corBrownian(phy = pruned_primates.tree)
-primates_traits <- primates_traits %>%
-  rename(MaxLongevity = `Maximum longevity (yrs)`, AdultWeight = `Adult weight (g)`)
-# Fit the PGLS model (comprobar codigo en capitulo q nos pasaron)
-pgls_model <- gls(MaxLongevity ~ AdultWeight, data = primates_traits, correlation = bm.mam)
-
-# View the results
-plot(pgls_model)
-summary(pgls_model)
-
-# Get residuals from the PGLS model
-pgls_residuals <- residuals(pgls_model)
-#no parece que los residuos coincidan con los que tenia alejandro, aunque los de él fueron calculados para mamímeros, no solo para primates
-primates_traits$pgls_residuals <- pgls_residuals
-```
-
-Maximum lifespan distribution in every primate family:
-I create plots as in Alejandro's paper for primates to compare with his results once I have the data to perform the PGLS an use the residuals of the MLS regressed over body mass
-Ask what the global criteria should be, if the species have to be only above the global median to be considered extreme long lived plus each family criteria or they need to be above global median plus above 1SD of the global median
-
-```{r family distributions}
-# Calculate global median and standard deviation
-global_median <- median(primates_traits$pgls_residuals)
-global_sd <- sd(primates_traits$pgls_residuals) 
-
-primates <- primates_traits %>% 
-  group_by(family) %>%  # Group by Family
-  # Calculate each family median and standar deviation
-  mutate(MedianFamLongevity = median(pgls_residuals),
-         sdFamLongevity = sd(pgls_residuals),
-         # Classify each species in below or above 1 SD 
-         spp_class = case_when(
-           pgls_residuals < (global_median) & pgls_residuals < (MedianFamLongevity - sdFamLongevity) ~ "Below 1 SD",
-           pgls_residuals > (global_median) & pgls_residuals > (MedianFamLongevity + sdFamLongevity) ~ "Above 1 SD",
-           TRUE ~ "Within 1 SD")) %>% 
-  ggplot(aes(x = reorder(family, ordering), y = pgls_residuals, color = family, fill = family)) +
-  geom_jitter(aes(shape = spp_class),  size = 3) +
-  # Represent each species with different shapes according the species clas they belong respect to their MLS
-  scale_shape_manual(values = c("Below 1 SD" = 22, "Within 1 SD" = 21,"Above 1 SD" = 24)) +
-  # Draw family median
-  stat_summary(fun.y = median, geom = "errorbar",
-               aes(ymax = ..y.., ymin = ..y..), size = 1) +
-  # Dray global median
-  geom_hline(yintercept = median(primates_traits$pgls_residuals), linetype = "dashed", color = "grey", size = 1) +
-  coord_flip() +
-  labs(x = 'Family',
-    y = 'Maximum Longevity residuals') +
-  theme_classic() + 
-  labs_pubr() +
-  theme(legend.position = "none",
-        text = element_text(size = 18))
-
-primates
-# save plot
-ggsave(plot = primates, filename = file.path(resultsDir,"descriptive/primates_famdistributionr.tiff"), dpi = 300, units = "in",width = 6, height = 6)
-```
-
-```{r}
+```{r table}
 # Clean and Summarize the Data
 summary_data <- primates_traits %>%
-  group_by(family) %>%
+  group_by(Family) %>%
   # Summarize data
   summarize(
     n = n(),
-    MLS_Mean = mean(MaxLongevity, na.rm = TRUE),
-    MLS_SD = sd(MaxLongevity, na.rm = TRUE),
-    min_MLS = min(MaxLongevity, na.rm = TRUE),
-    max_MLS = max(MaxLongevity, na.rm = TRUE),
+    MLS_Mean = mean(`Maximum longevity (yrs)`, na.rm = TRUE),
+    MLS_SD = sd(`Maximum longevity (yrs)`, na.rm = TRUE),
+    min_MLS = min(`Maximum longevity (yrs)`, na.rm = TRUE),
+    max_MLS = max(`Maximum longevity (yrs)`, na.rm = TRUE),
     LQ_Mean = mean(LQ, na.rm = TRUE),
     LQ_SD = sd(LQ, na.rm = TRUE),
     min_LQ = round(min(LQ, na.rm = TRUE),1),
@@ -609,7 +680,7 @@ summary_data
 
 # Use the gt function to create the table
 table_display <- summary_data %>%
-  select(family,n,MLS_Mean,MLS_SD, MLS_Limits, LQ_Mean, LQ_SD, LQ_Limits) %>%
+  select(Family,n,MLS_Mean,MLS_SD, MLS_Limits, LQ_Mean, LQ_SD, LQ_Limits) %>%
   gt() %>%
   tab_header(title = "Table. Mean MLS and LQ Computed Using All Records from our Primate Database") %>%
   
@@ -629,14 +700,120 @@ table_display
 #gtsave(table_display, filename = file.path(resultsDir,"descriptive/primates_table.png"))
 ```
 
+PGLS
+I add some code to test it when I have the data
 
-This plot is obtained with factorminer
+```{r PGLS}
+# There are 2 missing values 
+primates_traits <- primates_traits %>%
+  rename(MaxLongevity = `Maximum longevity (yrs)`, AdultWeight = `Adult weight (g)`) %>%
+  filter(!is.na(MaxLongevity),!is.na(AdultWeight))
+
+# Find the common names between tree labels and trait df
+common_names <- intersect(primates_tree$tip.label, primates_traits$label)
+# Prune tree, keeping the species from our trait dataframe
+pruned_primates.tree <- drop.tip(primates_tree, setdiff(primates_tree$tip.label, common_names))
+
+bm.mam <- corBrownian(phy = pruned_primates.tree)
+
+# Fit the PGLS model (comprobar codigo en capitulo q nos pasaron)
+pgls_model <- gls(MaxLongevity ~ AdultWeight, data = primates_traits, correlation = bm.mam)
+
+# View the results
+plot(pgls_model)
+summary(pgls_model)
+
+# Get residuals from the PGLS model
+pgls_residuals <- residuals(pgls_model)
+#no parece que los residuos coincidan con los que tenia alejandro, aunque los de él fueron calculados para mamímeros, no solo para primates
+primates_traits$pgls_residuals <- pgls_residuals
+```
+
+Maximum lifespan distribution in every primate family:
+I create plots as in Alejandro's paper for primates to compare with his results once I have the data to perform the PGLS an use the residuals of the MLS regressed over body mass
+Ask what the global criteria should be, if the species have to be only above the global median to be considered extreme long lived plus each family criteria or they need to be above global median plus above 1SD of the global median
+
+```{r residuals family distributions}
+# Calculate global median and standard deviation
+global_median <- median(primates_traits$pgls_residuals)
+global_sd <- sd(primates_traits$pgls_residuals) 
+
+primates <- primates_traits %>% 
+  group_by(Family) %>%  # Group by Family
+  # Calculate each family median and standar deviation
+  mutate(MedianFamLongevity = median(pgls_residuals),
+         sdFamLongevity = sd(pgls_residuals),
+         # Classify each species in below or above 1 SD 
+         spp_class = case_when(
+           pgls_residuals < (global_median) & pgls_residuals < (MedianFamLongevity - sdFamLongevity) ~ "Below 1 SD",
+           pgls_residuals > (global_median) & pgls_residuals > (MedianFamLongevity + sdFamLongevity) ~ "Above 1 SD",
+           TRUE ~ "Within 1 SD")) %>% 
+  ggplot(aes(x = reorder(Family, ordering), y = pgls_residuals, color = Family, fill = Family)) +
+  geom_jitter(aes(shape = spp_class),  size = 3) +
+  # Represent each species with different shapes according the species clas they belong respect to their MLS
+  scale_shape_manual(values = c("Below 1 SD" = 22, "Within 1 SD" = 21,"Above 1 SD" = 24)) +
+  # Draw family median
+  stat_summary(fun.y = median, geom = "errorbar",
+               aes(ymax = ..y.., ymin = ..y..), linewidth = 1) +
+  # Dray global median
+  geom_hline(yintercept = median(primates_traits$pgls_residuals), linetype = "dashed", color = "grey", linewidth = 1) +
+  coord_flip() +
+  labs(x = 'Family',
+    y = 'Maximum Lifespan residuals') +
+  theme_classic() + 
+  labs_pubr() +
+  theme(legend.position = "none",
+        text = element_text(size = 16))
+
+primates
+# save plot
+ggsave(plot = primates, filename = file.path(resultsDir,"descriptive/primates_famdistributionr.tiff"), dpi = 300, units = "in",width = 6, height = 6)
+```
+
+```{r alejandro resi fam distributions}
+# Calculate global median and standard deviation
+global_median <- median(primates_traits$residuals)
+global_sd <- sd(primates_traits$residuals) 
+
+primates <- primates_traits %>% 
+  group_by(Family) %>%  # Group by Family
+  # Calculate each family median and standar deviation
+  mutate(MedianFamLongevity = median(residuals),
+         sdFamLongevity = sd(residuals),
+         # Classify each species in below or above 1 SD 
+         spp_class = case_when(
+           residuals < (global_median) & residuals < (MedianFamLongevity - sdFamLongevity) ~ "Below 1 SD",
+           residuals > (global_median) & residuals > (MedianFamLongevity + sdFamLongevity) ~ "Above 1 SD",
+           TRUE ~ "Within 1 SD")) %>% 
+  ggplot(aes(x = reorder(Family, ordering), y = residuals, color = Family, fill = Family)) +
+  geom_jitter(aes(shape = spp_class),  size = 3) +
+  # Represent each species with different shapes according the species clas they belong respect to their MLS
+  scale_shape_manual(values = c("Below 1 SD" = 22, "Within 1 SD" = 21,"Above 1 SD" = 24)) +
+  # Draw family median
+  stat_summary(fun.y = median, geom = "errorbar",
+               aes(ymax = ..y.., ymin = ..y..), linewidth = 1) +
+  # Dray global median
+  geom_hline(yintercept = median(primates_traits$residuals), linetype = "dashed", color = "grey", linewidth = 1) +
+  coord_flip() +
+  labs(x = 'Family',
+    y = 'Maximum Lifespan residuals') +
+  theme_classic() + 
+  labs_pubr() +
+  theme(legend.position = "none",
+        text = element_text(size = 16))
+
+primates
+# save plot
+ggsave(plot = primates, filename = file.path(resultsDir,"descriptive/primates_Alejandrofamdistributionr.tiff"), dpi = 300, units = "in",width = 6, height = 6)
+```
+
+Correspondence Analysis. This plot is obtained with factorminer
 
 ```{r}
-# Firstt we calculate Principal component analysis with all numeric variables from anAge
+# First we calculate Principal component analysis with all numeric variables from anAge
 res.pca <- primates_traits %>%
   select_if(is.numeric) %>%
-  select(-ordering,-residuals) %>%
+  select(-ordering,-residuals,-dif) %>%
   PCA(., graph = FALSE)
 ```
 
@@ -647,7 +824,7 @@ fviz_pca_var(res.pca, col.var = "contrib", repel = TRUE,
              gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07")) + theme(panel.grid = element_blank())
 ```
 
-```{r}
+```{r, eval=FALSE}
 var_quanti_cor <- as.data.frame(res.pca$var$cor)
 var_quanti_cor
 # ver de tree coverage, si me interesa
@@ -657,7 +834,7 @@ var_quanti_cor
 
 si se hiciera por un factor, como el que usaron ellos de agrupar cada trait en 5 categorias, podría adaptar este código:
 
-```{r}
+```{r, eval=FALSE}
 #grp <- as.factor(cluster)
 # Color variables by groups
 #fviz_pca_var(res.pca, col.var = grp, 
