@@ -107,7 +107,7 @@ imputed_LQ <- primates_traits %>%
          imputed = ifelse(is.na(LQ), "Yes", "No")) %>%
   group_by(genus) %>%
   #checks if there's more than one row in the genus group
-  mutate(LQ = ifelse(n() > 1 & is.na(LQ), mean(LQ, na.rm = T), LQ)) %>%
+  mutate(impLQ = ifelse(n() > 1 & is.na(LQ), mean(LQ, na.rm = T), LQ)) %>%
   ungroup() %>%
   select(TOGA_ID, ASSEMBLY,ORDER,Family,label,`Common name`,genus, everything()) %>%
   filter(!is.na(LQ))
@@ -298,6 +298,28 @@ p4
 ggsave(plot = p4, filename = file.path(resultsDir,"descriptive/ggtree_fam_median_diff.tiff"), dpi = 300, units = "in",width = 6, height = 6)
 ```
 
+
+```{r both median differences}
+# Exclude outlier from trait representation
+primates_traits2 <- primates_traits
+primates_traits2$GD <- ifelse(primates_traits2$LQoutlier == "High_outlier", NA, primates_traits2$GD)
+primates_traits2$FD <- ifelse(primates_traits2$LQoutlier == "High_outlier", NA, primates_traits2$FD)
+
+primates_lq_tree2 <- primates_traits2 %>% 
+  column_to_rownames(var = "label") %>% 
+  select(GD,FD)
+
+circ <- ggtree(pruned_primates.tree2, layout = "circular") +
+  geom_tree(aes(color = Family), size = 1.5)   # Color branches/edges
+
+p5 <- gheatmap(circ, primates_lq_tree2, offset = .8, width = .2, colnames_angle = 95, colnames_offset_y = .05) + 
+  scale_fill_gradient2(name = "Median difference", limits = c(-1.05,1),  na.value = "grey50")
+
+p5
+# save plot
+ggsave(plot = p5, filename = file.path(resultsDir,"descriptive/ggtree_both_median_diff.tiff"), dpi = 300, units = "in",width = 6, height = 6)
+```
+
 ```{r phylogeny with imputed df trait}
 # Find the common names between tree labels and trait df
 common_names <- intersect(primates_tree$tip.label, imputed_LQ$label)
@@ -324,8 +346,13 @@ pruned_primates.impt2 <- full_join(pruned_primates.impt2, imputed_LQ, by = 'labe
 pruned_primates.impt2 <- tidytree::as.treedata(pruned_primates.impt2)
 # Exclude outlier from trait representation
 imputed_LQ2 <- imputed_LQ  %>%
-  mutate(GD = LQ - global_median,
-         FD = LQ - MedianFamLQ,
+  group_by(Family) %>%  # Group by Family
+  # Calculate each family median and standard deviation
+  mutate(MedianFamLQ = median(LQ, na.rm = T))
+
+imputed_LQ2 <- imputed_LQ2  %>%
+  mutate(GD = impLQ - global_median,
+         FD = impLQ - MedianFamLQ,
          GD = ifelse(imputed == "Yes" | label == "Homo_sapiens", NA, GD),
          FD = ifelse(imputed == "Yes" | label == "Homo_sapiens", NA, FD))
 
@@ -337,33 +364,11 @@ circ <- ggtree(pruned_primates.impt2, layout = "circular") +
   geom_tree(aes(color = Family), size = 1.5)   # Color branches/edges
 
 p6 <- gheatmap(circ, imputed_traits2, offset = .8, width = .2, colnames_angle = 95, colnames_offset_y = .05) + 
-  scale_fill_gradient2(name = "Median difference",  na.value = "grey50")
+  scale_fill_gradient2(name = "Median difference", limits = c(-1.05,1),  na.value = "grey50")
 
 p6
 # save plot
 ggsave(plot = p6, filename = file.path(resultsDir,"descriptive/ggtreeimputed_global_median_diff.tiff"), dpi = 300, units = "in",width = 6, height = 6)
-```
-
-
-```{r both median differences}
-# Exclude outlier from trait representation
-primates_traits2 <- primates_traits
-primates_traits2$GD <- ifelse(primates_traits2$LQoutlier == "High_outlier", NA, primates_traits2$GD)
-primates_traits2$FD <- ifelse(primates_traits2$LQoutlier == "High_outlier", NA, primates_traits2$FD)
-
-primates_lq_tree2 <- primates_traits2 %>% 
-  column_to_rownames(var = "label") %>% 
-  select(GD,FD)
-
-circ <- ggtree(pruned_primates.tree2, layout = "circular") +
-  geom_tree(aes(color = Family), size = 1.5)   # Color branches/edges
-
-p5 <- gheatmap(circ, primates_lq_tree2, offset = .8, width = .2, colnames_angle = 95, colnames_offset_y = .05) + 
-  scale_fill_gradient2(name = "Median difference", limits = c(-1.05,1),  na.value = "grey50")
-
-p5
-# save plot
-ggsave(plot = p5, filename = file.path(resultsDir,"descriptive/ggtree_both_median_diff.tiff"), dpi = 300, units = "in",width = 6, height = 6)
 ```
 
 ```{r}
