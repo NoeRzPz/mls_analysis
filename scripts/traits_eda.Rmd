@@ -1,7 +1,12 @@
 ---
 title: "Traits exploratory analysis"
-output: word_document
-date: "2023-09-21"
+author: "Noelia Rodríguez Pérez"
+output:
+  word_document: default
+  html_document:
+    df_print: paged
+  pdf_document: default
+date: "`r Sys.Date()`"
 ---
 
 ```{r setup, include=FALSE}
@@ -75,8 +80,7 @@ primates_lq <- toga_spp %>%
       !is.na(LQ)           # Keep only the non-NA LQ row
     } else {row_number() == 1    # If all are NA, just keep one of them
     }) %>%
-  ungroup() #%>%
-  #filter(!is.na(LQ))
+  ungroup() 
 
 # Select only primates
 primates_traits <- mammalian_traits  %>%
@@ -101,18 +105,17 @@ write.csv(primates_traits$SPECIES, file.path(resultsDir,"spp_names.csv"), row.na
 primates_traits <- left_join(primates_traits, spp_family[, -1], by = c("SPECIES" = "query"))
 
 # Imputation: Fill missing LQ with their same genus LQ mean
-# Fill missing LQ values based on the mode of the same genus
 imputed_LQ <- primates_traits %>%
   mutate(genus = str_replace_all(SPECIES, "\\s\\w+", ""),
          imputed = ifelse(is.na(LQ), "Yes", "No")) %>%
   group_by(genus) %>%
-  #checks if there's more than one row in the genus group
+  # if there's more than one row in the genus group and there is missing LQ, then impute
   mutate(impLQ = ifelse(n() > 1 & is.na(LQ), mean(LQ, na.rm = T), LQ)) %>%
   ungroup() %>%
   select(TOGA_ID, ASSEMBLY,ORDER,Family,label,`Common name`,genus, everything()) %>%
   filter(!is.na(LQ))
 
-# Reorder columns
+# Reorder non imputed df columns
 primates_traits <- primates_traits %>%
   select(TOGA_ID, ASSEMBLY,ORDER,Family,label,`Common name`, everything()) %>%
   filter(!is.na(LQ))
@@ -140,6 +143,7 @@ common_names <- intersect(primates_tree$tip.label, primates_traits$label)
 # Print alphabetically order different spp, to check for misspell names
 sort(setdiff(primates_tree$tip.label, primates_traits$label))
 sort(setdiff(primates_traits$label, primates_tree$tip.label))
+
 # Prune tree, keeping the species from our trait dataframe
 # Drop the tips that are NOT in common_names
 pruned_primates.tree <- drop.tip(primates_tree, setdiff(primates_tree$tip.label, common_names))
@@ -149,7 +153,6 @@ primates_traits <- primates_traits %>%
   mutate(ordering = match(label, pruned_primates.tree$tip.label)) %>%
   arrange(ordering)  %>%
   filter(!is.na(ordering)) # We keep only spp with representation in the tree
-  #select(-label) %>%# Remove the label column after arranging
 
 #Create variable called LQoutlier, where  low outliers are below Q1 − 1.5*IQR and high outliers are above Q3 + 1.5*IQR
 Q1 <- quantile(primates_traits$LQ, probs = 0.25, na.rm = T)
@@ -183,7 +186,7 @@ dev.off()  # Close the PNG device
 
 Depict trait values on phylogeny
 
-```{r}
+```{r non-circular plots}
 primates_lq_tree2 <- primates_traits$LQ
 names(primates_lq_tree2) <- primates_traits$label
 
@@ -377,6 +380,20 @@ ggtree(pruned_primates.tree) + geom_tiplab() +
 ```
 
 ```{r}
+ggtree(pruned_primates.tree) + 
+  geom_text(aes(label=node, subset=!isTip), hjust=-0.25) + 
+  theme_tree2(legend.position="none") +
+  labs(title="Phylogram with Branch Lengths in Million Years")
+```
+
+
+```{r}
+ape::plot.phylo(pruned_primates.impt2)
+ape::axisPhylo()  
+mtext("Million Years before present", side =1, line =3)
+```
+
+```{r}
 #pruned_primates.tree %>% 
 #  as_tibble
 ```
@@ -406,25 +423,9 @@ write_csv(groups_plus4, file.path(resultsDir,"descriptive/groups_plus4.csv"))
 
 ```
 
-Esto no sirve, hacerlo otra forma
-
-```{r, eval=FALSE}
-# Cut tree at internal nodes
-Species_included <- list()
-for (i in internal_nodes) {
-  set.seed(123)
-  tree <- cutPhylo(pruned_primates.tree, node = internal_nodes[i])#
-  Species_included[[i]] <- tree$tip.label
-}
-names(Species_included) <- internal_nodes
-```
-
-```{r, eval=FALSE}
-tree0 <- cutPhylo(pruned_primates.tree, age = 0, keep.lineage = T)
-tree10 <- cutPhylo(pruned_primates.tree, age = 10, keep.lineage = T) # linajes no cortados cómo se representarían?
-```
 
 
+Esto no sirve por ahora
 ```{r groups by phylogeny cuts, eval=FALSE}
 # Cut tree at sequential points
 my_cut <- seq(5, 55, by = 5)
@@ -605,32 +606,31 @@ corrplot.mixed(cor_numer, number.digits = 2, tl.col = "black") # Set the color o
 dev.off()
 ```
 
-
 Make scatter plot of weight vs MLS in between all mammals in database
 
 ```{r mammals, eval=FALSE}
 # Plot the same way as before
-#p.mammalia <- anage_mammals %>% 
-#  ggplot(aes(x = `Adult weight (g)`, y = `Maximum longevity (yrs)`, color = Order)) +
-#  geom_point(size = 1) +
-#  scale_x_log10() +
-#  scale_y_log10() +
-#  geom_smooth(
-#    method = 'lm', 
-#    aes(`Adult weight (g)`, `Maximum longevity (yrs)`), 
-#    inherit.aes = FALSE,
-#    col = "black") +
-#  labs( x = 'Log10(Adult Weight)',
-#    y = 'Log10(Maximum Longevity)',
-#    caption = "Human Ageing Genomic Resources: AnAge Build 15") +
-#  theme_classic() + 
-#  labs_pubr() +
-#  theme(
-#    legend.position = "bottom",
-#    text = element_text(size = 16),
-#    plot.caption = element_text(size = 10))
+p.mammalia <- anage_mammals %>% 
+  ggplot(aes(x = `Adult weight (g)`, y = `Maximum longevity (yrs)`, color = Order)) +
+  geom_point(size = 1) +
+  scale_x_log10() +
+  scale_y_log10() +
+  geom_smooth(
+    method = 'lm', 
+    aes(`Adult weight (g)`, `Maximum longevity (yrs)`), 
+    inherit.aes = FALSE,
+    col = "black") +
+  labs( x = 'Log10(Adult Weight)',
+    y = 'Log10(Maximum Longevity)',
+    caption = "Human Ageing Genomic Resources: AnAge Build 15") +
+  theme_classic() + 
+  labs_pubr() +
+  theme(
+    legend.position = "bottom",
+    text = element_text(size = 16),
+    plot.caption = element_text(size = 10))
 
-#p.mammalia
+p.mammalia
 ```
 
 Make scatter plot of weight vs MLS in between all primates in database 
@@ -814,7 +814,7 @@ ggsave(plot = primates, filename = file.path(resultsDir,"descriptive/primates_Al
 
 Correspondence Analysis. This plot is obtained with factorminer
 
-```{r}
+```{r PCA}
 # First we calculate Principal component analysis with all numeric variables from anAge
 res.pca <- primates_traits %>%
   select_if(is.numeric) %>%
@@ -824,7 +824,7 @@ res.pca <- primates_traits %>%
 
 The most important (or contributing) variables can be highlighted on the correlation plot as follow:
 
-```{r}
+```{r correspondence analysis}
 fviz_pca_var(res.pca, col.var = "contrib", repel = TRUE,
              gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07")) + theme(panel.grid = element_blank())
 ```
@@ -844,5 +844,44 @@ si se hiciera por un factor, como el que usaron ellos de agrupar cada trait en 5
 # Color variables by groups
 #fviz_pca_var(res.pca, col.var = grp, 
 #             palette = c("#0073C2FF", "#EFC000FF", "#868686FF"), legend.title = "Cluster")
+```
+
+
+
+
+```{r treecluster}
+# save tree as phylo
+pruned_primates.impt2 <- as.phylo(pruned_primates.impt2)
+# export tree
+write.tree(pruned_primates.impt2, file = file.path(resultsDir,"descriptive/treecluster/pruned_primates.impt2.newick"))
+
+# calculate distance from root, for each clade (tips+nodes)
+# distance from root = cumulative branch length from root to the clade
+# Compute distance of all tips and nodes to root
+phylodistances <- castor::get_all_distances_to_root(pruned_primates.impt2)
+
+# discart distances from tips & sort them
+keep <- seq_along(pruned_primates.impt2$tip.label)
+phylodistances <- sort(phylodistances[-keep])
+
+# remove duplicates
+phylodistances <- unique(phylodistances)
+write(phylodistances, file = file.path(resultsDir, "descriptive/treecluster/phylodistances.txt"))
+```
+
+
+
+```{bash}
+# Variables definition
+out_dir="out/descriptive/treecluster/" 
+
+# Cut the tree using TreeCluster 
+for threshold in $(cat ${out_dir}phylodistances.txt) 
+do
+  # Cut the tree each node distance and collect the clusters in separated files 
+  TreeCluster.py \
+  -i ${out_dir}pruned_primates.impt2.newick \
+  -t ${threshold} --method root_dist -o ${out_dir}cut_${threshold}.clusters
+done
 ```
 
