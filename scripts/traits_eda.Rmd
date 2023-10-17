@@ -626,8 +626,26 @@ image_urls <- sapply(top_uids$uid, function(uid) {
 })
 #http://phylopic.org/assets/images/submissions/79ad5f09-cf21-4c89-8e7d-0c82a00ce728.png
 
-library(ggimage)
-"
+library(rphylopic)
+df <- data.frame(
+  url = image_urls,
+  y = 1:length(image_urls)
+)
+ggplot(df, aes(x = 1, y = y, image = url)) +
+  geom_image() +
+  theme_void()
+df <- data.frame(x = rep(1,nrow(top_uids)), y = 1:nrow(top_uids))
+ggplot(df) +
+  geom_phylopic(aes(x = x, y = y, uuid = uid)) +
+  facet_wrap(~uid) 
+```
+
+```{r}
+# Get a single image uuid for a species
+#uuid <- get_uuid(name = "Canis lupus", n = 1)
+plot(x = 1, y = 1, type = "n")
+#add_phylopic_base(uuid = uuid, x = 1, y = 1, ysize = 0.25)
+add_phylopic_base(name = "Canis lupus", x = 0.75, y = 0.75, ysize = 0.25,verbose = T)
 ```
 
 
