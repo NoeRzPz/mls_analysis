@@ -1,11 +1,7 @@
 ---
 title: "Traits exploratory analysis"
 author: "Noelia Rodríguez Pérez"
-output:
-  word_document: default
-  html_document:
-    df_print: paged
-  pdf_document: default
+output: word_document
 date: "`r Sys.Date()`"
 ---
 
@@ -186,7 +182,7 @@ dev.off()  # Close the PNG device
 
 Depict trait values on phylogeny
 
-```{r non-circular plots}
+```{r non-circular plots, eval=FALSE}
 primates_lq_tree2 <- primates_traits$LQ
 names(primates_lq_tree2) <- primates_traits$label
 
@@ -214,7 +210,9 @@ ggsave(plot = p, filename = file.path(resultsDir,"descriptive/ggtreedots.tiff"),
 #obj <- contMap(pruned_primates.tree, primates_lq_tree2, plot = FALSE)
 #plot(obj,lwd = 7,xlim = c(-0.2,3.6))
 ```
+
 convert the phylo object to a tidy data frame, a tbl_tree object
+
 ```{r}
 pruned_primates.tree2 <- as_tibble(pruned_primates.tree)
 
@@ -547,7 +545,7 @@ for (i in my_cut) {
 global_median <- median(primates_traits$LQ, na.rm = T)
 global_sd <- sd(primates_traits$LQ, na.rm = T) 
 
-primates <- primates_traits %>% 
+primates1SD <- primates_traits %>% 
   group_by(Family) %>%  # Group by Family
   # Calculate each family median and standard deviation
   mutate(MedianFamLQ = median(LQ),
@@ -575,10 +573,118 @@ primates <- primates_traits %>%
     legend.position = "none",
     text = element_text(size = 18))
 
-primates
+primates1SD
 # save plot
-ggsave(plot = primates, filename = file.path(resultsDir,"descriptive/extreme_byfamily.tiff"), dpi = 300, units = "in",width = 6, height = 6)
+ggsave(plot = primates1SD, filename = file.path(resultsDir,"descriptive/extreme_byfamily.tiff"), dpi = 300, units = "in",width = 6, height = 6)
 ```
+Part C of figure 1
+```{r table top bottoms} 
+top1SD_spp <- primates1SD[["data"]] %>%
+  ungroup() %>%
+  filter(spp_class == "Above 1 SD") %>%
+  select(label,SPECIES, LQ)
+
+bottom1SD_spp <- primates1SD[["data"]] %>%
+  ungroup() %>%
+  filter(spp_class == "Below 1 SD") %>%
+  select(label,SPECIES, LQ)
+suggested_names <- ggimage::autocomplete_name("Macaca")suggested_names <- ggimage::autocomplete_name("Macaca")
+
+#suggested_names <- ggimage::autocomplete_name("Macaca")
+# Function to get the UID for each species from PhyloPic
+get_uid_or_genus <- function(species_name) {
+  # Try fetching UID for species
+  uid <- tryCatch({
+    ggimage::phylopic_uid(species_name)
+  }, error = function(e) {
+    return(NULL) # return NULL on error
+  })
+  
+  # If UID not found for species, try genus
+  if (is.null(uid)) {
+    genus <- unlist(strsplit(species_name, "_"))[1] # Extract genus from species name
+    uid <- tryCatch({
+      ggimage::phylopic_uid(genus)
+    }, error = function(e) {
+      return(NULL) # return NULL on error
+    })
+  }
+  
+  return(uid)
+}
+
+top_uids <- sapply(top1SD_spp$label, get_uid_or_genus)
+
+top_uids <- as.data.frame(t(top_uids))
+#Ensure that top_uids does not contain any NA values before plotting.
+image_urls <- sapply(top_uids$uid, function(uid) {
+  if (!is.na(uid)) {
+    return(paste0("http://phylopic.org/assets/images/submissions/", uid, ".png"))
+  } else {
+    return(NA)
+  }
+})
+#http://phylopic.org/assets/images/submissions/79ad5f09-cf21-4c89-8e7d-0c82a00ce728.png
+
+library(ggimage)
+"
+```
+
+
+
+probar diferentes combinaciones del gráfico de familias
+
+```{r}
+library(aplot)
+# visualize the tree 
+tree_plot <- ggtree(pruned_primates.tree2) +
+  # add symbols colored by family
+  geom_tippoint(aes(color = Family)) + 
+  geom_tiplab(align = TRUE) + xlim(NA, 3)
+
+primates1SD %>% insert_left(tree_plot)
+primates <- primates_traits %>% 
+  group_by(Family) %>%  # Group by Family
+  # Calculate each family median and standard deviation
+  mutate(MedianFamLQ = median(LQ),
+         sdFamLQ = sd(LQ),
+         # Classify each species in below or above 1 SD 
+         spp_class = case_when(
+           LQ < (global_median) & LQ < (MedianFamLQ - sdFamLQ) ~ "Below 1 SD",
+           LQ > (global_median) & LQ > (MedianFamLQ + sdFamLQ) ~ "Above 1 SD",
+           TRUE ~ "Within 1 SD")) %>% 
+  ggplot(aes(x = Family, y = LQ, color = Family, fill = Family)) +
+  geom_jitter(aes(shape = spp_class), size = 3) +
+  # Represent each species with different shapes according the species clas they belong respect to their MLS
+  scale_shape_manual(values = c("Below 1 SD" = 22, "Within 1 SD" = 21,"Above 1 SD" = 24)) +
+  # Draw family median
+  stat_summary(fun.y = median, geom = "errorbar",
+               aes(ymax = ..y.., ymin = ..y..), linewidth = 1) +
+  # Dray global median
+  geom_hline(yintercept = median(primates_traits$LQ, na.rm = T), linetype = "dashed", color = "grey", linewidth = 1) +
+  coord_flip() +
+  labs(x = 'Family',
+    y = 'Longevity Quotient') +
+  theme_classic() + 
+  labs_pubr() +
+  theme(
+    legend.position = "none",
+    text = element_text(size = 18))
+# Combining the plots
+combined_plot <- plot_grid(tree_plot, primates, rel_widths = c(0.3, 0.7))
+
+print(combined_plot)
+
+
+
+## visualize SNP and Trait data using dot and bar charts,
+## and align them based on tree structure
+tree_plot+ geom_facet(panel = "LQ", data = df_bar_data, geom = geom_point, 
+                aes(x = dummy_bar_value, color = Family, 
+                fill = Family), width = .6) +
+    theme_tree2(legend.position=c(.05, .85))
+```
+
 
 Load mammalian all traits
 
@@ -869,9 +975,15 @@ phylodistances <- unique(phylodistances)
 write(phylodistances, file = file.path(resultsDir, "descriptive/treecluster/phylodistances.txt"))
 ```
 
+```{r tfm figure 1}
+fig1 <- plot_grid(p1, p2,  ncol = 2, tag_levels='A') 
+
+# save plots
+ggsave(plot = combined_plot, filename = file.path(resultsDir,paste0("descriptive/extreme_threshold_",i,"mily.tiff")), dpi = 300, units = "in",width = 6, height = 6)
+```
 
 
-```{bash}
+```{bash, eval=FALSE}
 # Variables definition
 out_dir="out/descriptive/treecluster/" 
 
@@ -882,6 +994,14 @@ do
   TreeCluster.py \
   -i ${out_dir}pruned_primates.impt2.newick \
   -t ${threshold} --method root_dist -o ${out_dir}cut_${threshold}.clusters
+done
+```
+
+
+```{bash, eval=FALSE}
+for file in $(ls ${out_dir}cut*)
+do
+  echo $file
 done
 ```
 
