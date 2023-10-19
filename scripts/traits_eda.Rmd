@@ -32,8 +32,8 @@ library(nlme)
 library(gt)
 library(ggtree)
 library(phytools)
-library(RRphylo)
-library(picante)
+#library(RRphylo)
+#library(picante)
 library(ggnewscale)
 ```
 
@@ -331,7 +331,7 @@ ggtree(pruned_primates.tree) +
 
 
 ```{r}
-ape::plot.phylo(pruned_primates.tree2)
+ape::plot.phylo(pruned_primates.tree)
 ape::axisPhylo()  
 mtext("Million Years before present", side =1, line =3)
 ```
@@ -488,7 +488,8 @@ for (i in my_cut) {
 # Calculate global median and standard deviation
 global_median <- median(primates_traits$LQ, na.rm = T)
 global_sd <- sd(primates_traits$LQ, na.rm = T) 
-
+# Order of Family apearance in the tree
+treeFam_ordered <- c("Cercopithecidae","Hominidae","Cebidae","Atelidae","Lemuridae","Cheirogaleidae","Daubentoniidae","Galagidae" ,"Lorisidae")
 primates1SD <- primates_traits %>% 
   group_by(Family) %>%
   ggplot(aes(x = Family, y = LQ, color = Family, fill = Family)) +
@@ -515,6 +516,68 @@ primates1SD
 ggsave(plot = primates1SD, filename = file.path(resultsDir,"descriptive/extreme_byfamily.tiff"), dpi = 300, units = "in",width = 6, height = 6)
 ```
 
+```{r LQ family distribution 3SD}
+# Con 3SD ni con 2SD no sale nada
+# Calculate global median and standard deviation
+global_median <- median(primates_traits$LQ, na.rm = T)
+global_sd <- sd(primates_traits$LQ, na.rm = T) 
+
+primates3SD <- primates_traits %>% 
+  group_by(Family) %>%
+  mutate(spp_class = case_when(
+           LQ < (global_median) & LQ < (MedianFamLQ - (1.5*sdFamLQ)) ~ "Bottom species",
+           LQ > (global_median) & LQ > (MedianFamLQ + (1.5*sdFamLQ)) ~ "Top species",
+           TRUE ~ "Not extreme")) %>%
+  ggplot(aes(x = Family, y = LQ, color = Family, fill = Family)) +
+  geom_jitter(aes(shape = spp_class), size = 3) +
+  scale_x_discrete(limits = rev(treeFam_ordered)) + # Set the order here
+  # Represent each species with different shapes according the species clas they belong respect to their MLS
+  scale_shape_manual(values = c("Bottom species" = 22, "Not extreme" = 21,"Top species" = 24)) +
+  # Draw family median
+  stat_summary(fun.y = median, geom = "errorbar",
+               aes(ymax = ..y.., ymin = ..y..), linewidth = 1) +
+  # Dray global median
+  geom_hline(yintercept = median(primates_traits$LQ, na.rm = T), linetype = "dashed", color = "grey", linewidth = 1) +
+  coord_flip() +
+  labs(x = 'Family',
+    y = 'Longevity Quotient') +
+  theme_classic() + 
+  labs_pubr() +
+  theme(
+    legend.position = "none",
+    text = element_text(size = 18))
+
+primates3SD
+# save plot
+ggsave(plot = primates1SD, filename = file.path(resultsDir,"descriptive/extreme_byfamily.tiff"), dpi = 300, units = "in",width = 6, height = 6)
+```
+
+Make scatter plot of LQ vs weight in between in primates database for part A of figure 1
+
+```{r LQ vs BMass scatter}
+# Plot the same way as before
+scatterLQ <- primates_traits %>% 
+  ggplot(aes(x = `Adult weight (g)`, y = LQ, color = Family)) +
+  geom_point(size = 1) +
+  scale_x_log10() +
+  scale_y_log10() +
+  geom_smooth(
+    method = 'lm', 
+    aes(`Adult weight (g)`, LQ), 
+    inherit.aes = FALSE,
+    col = "black") +
+  labs( x = 'Log10(Adult Weight)',
+    y = 'Log10(LQ)') +
+  theme_classic() + 
+  labs_pubr() +
+  theme(
+    legend.position = "bottom",
+    text = element_text(size = 16))
+
+scatterLQ
+```
+
+
 Building part B of figure 1
 
 ```{r LQ figure 1 B}
@@ -522,7 +585,7 @@ Building part B of figure 1
 # visualize the tree 
 tree_plot <- ggtree(pruned_primates.tree2) +
   # add symbols colored by family
-  geom_tippoint(aes(color = Family)) + 
+  geom_tippoint(aes(color = Family)) +
   theme(legend.position = "none") # This hides the legend
 
 # Order of Family apearance in the tree
@@ -545,7 +608,7 @@ primates1SD <- primates_traits %>%
   # Dray global median
   geom_hline(yintercept = median(primates_traits$LQ, na.rm = T), linetype = "dashed", color = "grey", linewidth = 1) +
   coord_flip() +
-  labs(y = 'Longevity Quotient') +
+  labs(y = 'Longevity Quotient',shape = "") +
   theme_classic() + 
   labs_pubr() +
   theme(axis.title.y = element_blank(),
@@ -554,13 +617,141 @@ primates1SD <- primates_traits %>%
     text = element_text(size = 16))
 
 # Combining the plots
-combined_plot <- plot_grid(tree_plot, primates1SD, rel_widths = c(0.3, 0.7))#ncol=2,
-combined_plot
+tree_LQdistribution <- plot_grid(tree_plot, primates1SD, rel_widths = c(0.3, 0.7))#ncol=2,
+tree_LQdistribution
 
 # save plot
-ggsave(plot = primates1SD, filename = file.path(resultsDir,"descriptive/extreme_byfamily.tiff"), dpi = 300, units = "in",width = 6, height = 6)
+ggsave(plot = tree_LQdistribution, filename = file.path(resultsDir,"descriptive/fig1_B.tiff"), dpi = 300, units = "in",width = 6, height = 6)
 ```
-Part C of figure 1
+
+```{r}
+# Assuming you have a tree named `pruned_primates.tree2` and a data frame `primates_traits` with a column `Family` that indicates the family of each species
+mrcas <- c()
+# Determine the MRCA for each family
+mrca <- MRCA(pruned_primates.tree, 9,23)
+mrcas <- c(mrcas, mrca) 
+mrca <- MRCA(pruned_primates.tree, 26,27)
+mrcas <- c(mrcas, mrca) 
+mrca <- MRCA(pruned_primates.tree, 4,1)
+mrcas <- c(mrcas, mrca) 
+mrca <- MRCA(pruned_primates.tree, 6,5)
+mrcas <- c(mrcas, mrca) 
+
+mrca <- MRCA(pruned_primates.tree, 32,33)
+mrcas <- c(mrcas, mrca) 
+mrca <- MRCA(pruned_primates.tree, 36,35)
+mrcas <- c(mrcas, mrca) 
+
+mrca <- MRCA(pruned_primates.tree, 38,37)
+mrcas <- c(mrcas, mrca) 
+write(mrcas, file = file.path(dataDir, "/mrcas.txt"))
+
+# Assign family names to specific internal nodes
+# Define node labels
+nodes <- c(48, 64, 43,46,70,74,75)
+names(nodes) <- c("Cercopithecidae", "Hominidae","Cebidae","Atelidae","Cheirogaleidae","Daubentoniidae","Lorisidae")
+nodes
+
+# View the labeled tree
+tree_tbl <- as_tibble(pruned_primates.tree)
+# Apply labels
+for (i in seq_along(nodes)) {
+  tree_tbl <- tree_tbl %>%
+    mutate(label = ifelse(is.na(label) & node == nodes[i], names(nodes[i]), label))
+}
+
+tree <- as.phylo(tree_tbl)
+
+ggtree(tree) + 
+  geom_tiplab() + 
+  geom_nodelab()
+write.tree(tree, file=file.path(dataDir,"/pruned_primates.treenodes.nwk"))
+
+tree_collapsed <- drop.tip(tree, "Cercopithecidae")
+tree_collapsed$node.label
+
+# Collapse multiple nodes
+tree_tbl2 <- as.tibble(tree)
+
+
+
+#Get the descendant nodes of the nodes with the above labels
+descendant_nodes <- tree_tbl2 %>%
+  filter(parent %in% c(48, 64, 43,46,70,74,75)) 
+# remove descendant nodes
+collapsed_tree_tbl <- tree_tbl %>%
+  anti_join(descendant_nodes, by = "node")
+collapsed_tree_tbl2 <- collapsed_tree_tbl %>%
+  filter(!(node %in% c(1:27,30:34))) 
+# convert back to phylo
+collapsed_tree <- as.phylo(collapsed_tree_tbl)
+
+collapsed_tree_tbl$node
+ggtree(collapsed_tree) + 
+  geom_tiplab() + 
+  geom_nodelab()
+
+# This would do what I want but does not work
+# Or use ggtree for a more customizable plot
+#p <- ggtree(pruned_primates.tree)
+#collapse(p, node=48)
+#p1 <- ggtree(pruned_primates.tree)
+#p2 <- collapse(p1, 48) + geom_point2(aes(subset=(node==48)), size=5, shape=21)
+#p3 <- collapse(p2, 64) + geom_point2(aes(subset=(node==64)), size=5, shape=21)
+#gtr <- ggtree(pruned_primates.tree)
+#anno_gtr <- gtr+ geom_text(aes(label=node)) +geom_tiplab()
+#collapsed_anno_gtr <- anno_gtr%>% collapse(node=48)
+```
+
+```{bash}
+python scripts/prune_tree.py
+```
+
+```{r}
+# Load phylogenetic tree 
+pruned_fam <- read.tree(file.path(dataDir,"pruned_primates.families.nwk"))
+# visualize the tree 
+tree_plot <- ggtree(pruned_fam) +
+  # add symbols colored by family
+  geom_tippoint(aes(color = Family)) +
+  theme(legend.position = "none") # This hides the legend
+
+# Order of Family apearance in the tree
+treeFam_ordered <- c("Cercopithecidae","Hominidae","Cebidae","Atelidae","Lemuridae","Cheirogaleidae","Daubentoniidae","Galagidae" ,"Lorisidae")
+#primates_traits$Family
+
+# Set the family column as an ordered factor based on the specified order
+#primates_traits$Family <- factor(primates_traits$Family, levels= rev(treeFam_ordered))
+
+primates1SD <- primates_traits %>% 
+  group_by(Family) %>%
+  ggplot(aes(x = Family, y = LQ, color = Family, fill = Family)) +
+  geom_jitter(aes(shape = spp_class), size = 3) +
+  scale_x_discrete(limits = rev(treeFam_ordered)) + # Set the order here
+  # Represent each species with different shapes according the species clas they belong respect to their MLS
+  scale_shape_manual(values = c("Below 1 SD" = 22, "Within 1 SD" = 21,"Above 1 SD" = 24)) +
+  # Draw family median
+  stat_summary(fun.y = median, geom = "errorbar",
+               aes(ymax = ..y.., ymin = ..y..), linewidth = 1) +
+  # Dray global median
+  geom_hline(yintercept = median(primates_traits$LQ, na.rm = T), linetype = "dashed", color = "grey", linewidth = 1) +
+  coord_flip() +
+  labs(y = 'Longevity Quotient',shape = "") +
+  theme_classic() + 
+  labs_pubr() +
+  theme(axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+    legend.position = "right",
+    text = element_text(size = 16))
+
+# Combining the plots
+tree_LQdistribution <- plot_grid(tree_plot, primates1SD, rel_widths = c(0.3, 0.7))#ncol=2,
+tree_LQdistribution
+```
+
+
+Build part C of figure 1
+
 ```{r table top bottoms} 
 top1SD_spp <- primates_traits %>%
   filter(spp_class == "Above 1 SD") %>%
@@ -662,30 +853,7 @@ corrplot.mixed(cor_numer, number.digits = 2, tl.col = "black") # Set the color o
 dev.off()
 ```
 
-Make scatter plot of LQ vs weight in between in primates database
 
-```{r mammals, eval=FALSE}
-# Plot the same way as before
-scatterLQ <- primates_traits %>% 
-  ggplot(aes(x = `Adult weight (g)`, y = LQ, color = Family)) +
-  geom_point(size = 1) +
-  scale_x_log10() +
-  scale_y_log10() +
-  geom_smooth(
-    method = 'lm', 
-    aes(`Adult weight (g)`, LQ), 
-    inherit.aes = FALSE,
-    col = "black") +
-  labs( x = 'Log10(Adult Weight)',
-    y = 'Log10(LQ)') +
-  theme_classic() + 
-  labs_pubr() +
-  theme(
-    legend.position = "bottom",
-    text = element_text(size = 16))
-
-scatterLQ
-```
 
 Make scatter plot of weight vs MLS in between all primates in database 
 I select all primates, to make plots that I can compare with the ones from Alejandro
