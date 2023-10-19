@@ -32,6 +32,7 @@ library(nlme)
 library(gt)
 library(ggtree)
 library(phytools)
+library(ggimage)
 #library(RRphylo)
 #library(picante)
 library(ggnewscale)
@@ -129,8 +130,7 @@ common_names <- intersect(primates_tree$tip.label, primates_traits$label)
 sort(setdiff(primates_tree$tip.label, primates_traits$label))
 sort(setdiff(primates_traits$label, primates_tree$tip.label))
 
-# Prune tree, keeping the species from our trait dataframe
-# Drop the tips that are NOT in common_names
+# Prune tree, keeping the species from our trait dataframe, drop tips that are NOT in common_names
 pruned_primates.tree <- drop.tip(primates_tree, setdiff(primates_tree$tip.label, common_names))
 
 # Match the order of pruned_primates.tree$tip.label
@@ -161,7 +161,8 @@ primates_traits <- primates_traits %>%
            LQ > (global_median) & LQ > (MedianFamLQ + sdFamLQ) ~ "Above 1 SD",
            TRUE ~ "Within 1 SD"),
          # Calculate each spp LQ family median differences 
-         FD = LQ - MedianFamLQ)
+         FD = LQ - MedianFamLQ) %>%
+  ungroup()
 # Alejandro's column outlier was depicting if spp was on the top50, with LQoutlier only homo sapiens is a high_outlier and was on top50 on alejandro's column
 ```
 
@@ -366,7 +367,31 @@ write_csv(groups_plus4, file.path(resultsDir,"descriptive/groups_plus4.csv"))
 
 ```
 
+explore all primates traits distributions
 
+```{r}
+# Check continuous variables distribution
+p <- primates_traits %>% 
+  select(`Adult weight (g)`, `Maximum longevity (yrs)`, LQ) %>%
+  ggpairs()
+# save plot
+ggsave(plot = p, filename = file.path(resultsDir,"descriptive/primates_ggpairs.tiff"), dpi = 300, units = "in",width = 6, height = 6)
+
+# Select 2 variables, remove missing variables and calculate spearman correlation from them
+cor_numer <- primates_traits %>% 
+  select(`Adult weight (g)`, `Maximum longevity (yrs)`, LQ) %>% # select_if(is.numeric) 
+  drop_na() %>%
+  cor(., method = "spearman") #,use = "pairwise.complete.obs" )
+
+# Specify the tiff device to save plot
+tiff(filename = file.path(resultsDir,"descriptive/primates_corplot.tiff"), width = 6, height = 6, units = "in", res = 300)
+#  Correlation plot
+corrplot.mixed(cor_numer, number.digits = 2, tl.col = "black") # Set the color of text labels for correlation numbers
+# variables outside diagonal tl.pos = "lt" 
+
+# Close the device
+dev.off()
+```
 
 Esto no sirve por ahora
 ```{r groups by phylogeny cuts, eval=FALSE}
@@ -516,13 +541,13 @@ primates1SD
 ggsave(plot = primates1SD, filename = file.path(resultsDir,"descriptive/extreme_byfamily.tiff"), dpi = 300, units = "in",width = 6, height = 6)
 ```
 
-```{r LQ family distribution 3SD}
+```{r LQ family distribution 2SD}
 # Con 3SD ni con 2SD no sale nada
 # Calculate global median and standard deviation
 global_median <- median(primates_traits$LQ, na.rm = T)
 global_sd <- sd(primates_traits$LQ, na.rm = T) 
 
-primates3SD <- primates_traits %>% 
+primatesSDs <- primates_traits %>% 
   group_by(Family) %>%
   mutate(spp_class = case_when(
            LQ < (global_median) & LQ < (MedianFamLQ - (1.5*sdFamLQ)) ~ "Bottom species",
@@ -547,9 +572,84 @@ primates3SD <- primates_traits %>%
     legend.position = "none",
     text = element_text(size = 18))
 
-primates3SD
+primatesSDs
 # save plot
 ggsave(plot = primates1SD, filename = file.path(resultsDir,"descriptive/extreme_byfamily.tiff"), dpi = 300, units = "in",width = 6, height = 6)
+```
+
+Getting the spp names with extreme top values and extreme bottom values
+```{r}
+top1SD_spp <- primates_traits %>%
+  filter(spp_class == "Above 1 SD") %>%
+  select(Family,SPECIES, LQ)
+
+bottom1SD_spp <- primates_traits %>%
+  filter(spp_class == "Below 1 SD") %>%
+  select(Family,SPECIES, LQ)
+
+top1SD_spp
+bottom1SD_spp
+```
+
+
+```{r}
+top <- primatesSDs[["data"]]  %>%
+  ungroup()  %>%
+  filter(spp_class == "Top species") %>%
+  select(Family,SPECIES)
+bottom <- primatesSDs[["data"]]   %>%
+  ungroup()  %>%
+  filter(spp_class == "Bottom species") %>%
+  select(Family,SPECIES)
+top
+bottom
+```
+
+We try with another strategy, using quantiles
+
+```{r}
+
+primates_q <- primates_traits %>% 
+  group_by(Family) %>%
+  mutate(spp_class = case_when(
+           LQ < (global_median) & LQ < quantile(LQ, 0.25, na.rm=TRUE) ~ "Bottom species",
+           LQ > (global_median) & LQ > quantile(LQ, 0.75, na.rm=TRUE) ~ "Top species",
+           TRUE ~ "Not extreme")) %>%
+  ggplot(aes(x = Family, y = LQ, color = Family, fill = Family)) +
+  geom_jitter(aes(shape = spp_class), size = 3) +
+  scale_x_discrete(limits = rev(treeFam_ordered)) + # Set the order here
+  # Represent each species with different shapes according the species clas they belong respect to their MLS
+  scale_shape_manual(values = c("Bottom species" = 22, "Not extreme" = 21,"Top species" = 24)) +
+  # Draw family median
+  stat_summary(fun.y = median, geom = "errorbar",
+               aes(ymax = ..y.., ymin = ..y..), linewidth = 1) +
+  # Dray global median
+  geom_hline(yintercept = median(primates_traits$LQ, na.rm = T), linetype = "dashed", color = "grey", linewidth = 1) +
+  coord_flip() +
+  labs(x = 'Family',
+    y = 'Longevity Quotient') +
+  theme_classic() + 
+  labs_pubr() +
+  theme(
+    legend.position = "none",
+    text = element_text(size = 18))
+
+primates_q
+```
+
+Getting the spp names with extreme top values and extreme bottom values
+
+```{r}
+top <- primates_q[["data"]]  %>%
+  ungroup()  %>%
+  filter(spp_class == "Top species") %>%
+  select(Family, SPECIES)
+bottom <- primates_q[["data"]]   %>%
+  ungroup()  %>%
+  filter(spp_class == "Bottom species") %>%
+  select(Family,SPECIES)
+top
+bottom
 ```
 
 Make scatter plot of LQ vs weight in between in primates database for part A of figure 1
@@ -558,7 +658,7 @@ Make scatter plot of LQ vs weight in between in primates database for part A of 
 # Plot the same way as before
 scatterLQ <- primates_traits %>% 
   ggplot(aes(x = `Adult weight (g)`, y = LQ, color = Family)) +
-  geom_point(size = 1) +
+  geom_point(size = 2) +
   scale_x_log10() +
   scale_y_log10() +
   geom_smooth(
@@ -575,8 +675,89 @@ scatterLQ <- primates_traits %>%
     text = element_text(size = 16))
 
 scatterLQ
+
+scatterLQkg <- primates_traits %>% 
+  mutate(body_masskg = `Adult weight (g)`/1000) %>% 
+  ggplot(aes(x = body_masskg, y = LQ, color = Family)) +
+  geom_point(size = 2) +
+  scale_x_log10() +
+  scale_y_log10() +
+  geom_smooth(
+    method = 'lm', 
+    aes(body_masskg, LQ), 
+    inherit.aes = FALSE,
+    col = "black") +
+  labs( x = 'Log10(Adult Weight (kg))',
+    y = 'Log10( LQ)') +
+  theme_classic() + 
+  labs_pubr() +
+  theme(
+    legend.position = "bottom",
+    text = element_text(size = 16))
+
+scatterLQkg
 ```
 
+```{r LQ vs BMass scatter}
+# Plot the same way as before
+scatterLQ <- primates_traits %>% 
+  ggplot(aes(x = `Adult weight (g)`, y = LQ, color = Family)) +
+  geom_point(size = 2) +
+  geom_smooth(
+    method = 'lm', 
+    aes(`Adult weight (g)`, LQ), 
+    inherit.aes = FALSE,
+    col = "black") +
+  labs( x = 'Adult Weight (g)',
+    y = 'LQ') +
+  theme_classic() + 
+  labs_pubr() +
+  theme(
+    legend.position = "bottom",
+    text = element_text(size = 16))
+
+scatterLQ
+
+scatterLQkg <- primates_traits %>% 
+  mutate(body_masskg = `Adult weight (g)`/1000) %>% 
+  ggplot(aes(x = body_masskg, y = LQ, color = Family)) +
+  geom_point(size = 2) +
+  geom_smooth(
+    method = 'loess', #fits a non-linear regression using local polynomial regression, for visualizing complex relationships
+    aes(body_masskg, LQ), 
+    inherit.aes = FALSE,
+    col = "black") +
+  labs( x = 'Adult Weight (kg)',
+    y = 'LQ') +
+  theme_classic() + 
+  labs_pubr() +
+  theme(
+    legend.position = "bottom",
+    text = element_text(size = 16))
+
+scatterLQkg
+
+scattermlskg <- primates_traits %>% 
+  mutate(body_masskg = `Adult weight (g)`/1000) %>% 
+  ggplot(aes(x = body_masskg, y = `Maximum longevity (yrs)`, color = Family)) +
+  geom_point(size = 2) +
+  scale_x_log10() +
+  scale_y_log10() +
+  geom_smooth(
+    method = 'lm', 
+    aes(body_masskg, `Maximum longevity (yrs)`), 
+    inherit.aes = FALSE,
+    col = "black") +
+  labs( x = 'Log10(Adult Weight (kg))',
+    y = 'Log10(Maximum Lifespan (yrs))') +
+  theme_classic() + 
+  labs_pubr() +
+  theme(
+    legend.position = "bottom",
+    text = element_text(size = 16))
+
+scattermlskg
+```
 
 Building part B of figure 1
 
@@ -614,7 +795,7 @@ primates1SD <- primates_traits %>%
   theme(axis.title.y = element_blank(),
         axis.text.y = element_blank(),
     legend.position = "right",
-    text = element_text(size = 16))
+    text = element_text(size = 16)) 
 
 # Combining the plots
 tree_LQdistribution <- plot_grid(tree_plot, primates1SD, rel_widths = c(0.3, 0.7))#ncol=2,
@@ -624,7 +805,7 @@ tree_LQdistribution
 ggsave(plot = tree_LQdistribution, filename = file.path(resultsDir,"descriptive/fig1_B.tiff"), dpi = 300, units = "in",width = 6, height = 6)
 ```
 
-```{r}
+```{r, eval=FALSE}
 # Assuming you have a tree named `pruned_primates.tree2` and a data frame `primates_traits` with a column `Family` that indicates the family of each species
 mrcas <- c()
 # Determine the MRCA for each family
@@ -667,13 +848,9 @@ ggtree(tree) +
   geom_nodelab()
 write.tree(tree, file=file.path(dataDir,"/pruned_primates.treenodes.nwk"))
 
-tree_collapsed <- drop.tip(tree, "Cercopithecidae")
-tree_collapsed$node.label
 
 # Collapse multiple nodes
 tree_tbl2 <- as.tibble(tree)
-
-
 
 #Get the descendant nodes of the nodes with the above labels
 descendant_nodes <- tree_tbl2 %>%
@@ -703,11 +880,8 @@ ggtree(collapsed_tree) +
 #collapsed_anno_gtr <- anno_gtr%>% collapse(node=48)
 ```
 
-```{bash}
-python scripts/prune_tree.py
-```
-
-```{r}
+No usar esto
+```{r eval=FALSE}
 # Load phylogenetic tree 
 pruned_fam <- read.tree(file.path(dataDir,"pruned_primates.families.nwk"))
 # visualize the tree 
@@ -788,14 +962,56 @@ top_uids$uid[rownames(top_uids) == "Homo_sapiens"] <- "1e3a5ba7-aeef-458e-9f08-c
 bottom_uids <- sapply(bottom1SD_spp$label, get_uid_or_genus)
 
 ```
-
 ```{r}
-uuid <- get_uuid(name = "Homo sapiens", n = 5)
+top1SD_spp <- primates_traits %>%
+  filter(spp_class == "Above 1 SD") %>%
+  select(label,SPECIES, LQ)
+
+bottom1SD_spp <- primates_traits %>%
+  filter(spp_class == "Below 1 SD") %>%
+  select(label,SPECIES, LQ)
+
+extreme_spp <- rbind(top1SD_spp, bottom1SD_spp) %>%
+  arrange(LQ)
+
+extreme_spp <- extreme_spp %>%
+  filter(!(label %in% c("Pygathrix_nemaeus","Macaca_nemestrina","Macaca_fuscata","Sapajus_apella")))
+
+# keep a tree with only the extreme_spp
+# Find the common names between tree labels and trait df
+common_names <- intersect(pruned_primates.tree$tip.label, extreme_spp$label)
+
+# Prune tree, keeping the species from our trait dataframe, drop tips that are NOT in common_names
+extreme_primates.tree <- drop.tip(pruned_primates.tree, setdiff(pruned_primates.tree$tip.label, common_names))
+
+# search the images uid
+# macaca_fascicularis through an error, I search uid manually: d98c79cf-4ca5-4af8-91d2-9a3e51617360
+#Trachypithecus_francoisi 3b9150ed-4203-4cdb-b2a5-c21654857e5f
+extr_accepted_names <- c()
+for (i in extreme_primates.tree$tip.label) {
+  name <- ggimage::autocomplete_name(i)
+  extr_accepted_names <- c(extr_accepted_names, name$match_name)
+}
+
+
+d <- ggimage::phylopic_uid(extreme_primates.tree$tip.label)
+
+# Update your plot with the filtered data
+p <- ggtree(extreme_primates.tree) %<+% d + 
+  geom_tiplab(aes(image=uid), geom="phylopic", offset=2.5) +
+  geom_tiplab(aes(label=label), offset = .2) #+ xlim(NA, 7)
+
+# Print the plot
+p
+
 ```
 
 
+
 ```{r}
-library(rphylopic)
+#library(rphylopic)
+# with this I download all uids from a species in the database
+uuid <- get_uuid(name = "Homo sapiens", n = 5)
 # Get a single image for a species
 top_uid <- unlist(top_uids$uid)
 # Define the plotting window with enough vertical space for all species
@@ -827,31 +1043,7 @@ for (i in seq_along(bottom_uids)) {
 title("Bottom species")
 ```
 
-Load mammalian all traits
 
-```{r}
-# Check continuous variables distribution
-p <- primates_traits %>% 
-  select(`Adult weight (g)`, `Maximum longevity (yrs)`, LQ) %>%
-  ggpairs()
-# save plot
-ggsave(plot = p, filename = file.path(resultsDir,"descriptive/primates_ggpairs.tiff"), dpi = 300, units = "in",width = 6, height = 6)
-
-# Select 2 variables, remove missing variables and calculate spearman correlation from them
-cor_numer <- primates_traits %>% 
-  select(`Adult weight (g)`, `Maximum longevity (yrs)`, LQ) %>% # select_if(is.numeric) 
-  drop_na() %>%
-  cor(., method = "spearman") #,use = "pairwise.complete.obs" )
-
-# Specify the tiff device to save plot
-tiff(filename = file.path(resultsDir,"descriptive/primates_corplot.tiff"), width = 6, height = 6, units = "in", res = 300)
-#  Correlation plot
-corrplot.mixed(cor_numer, number.digits = 2, tl.col = "black") # Set the color of text labels for correlation numbers
-# variables outside diagonal tl.pos = "lt" 
-
-# Close the device
-dev.off()
-```
 
 
 
