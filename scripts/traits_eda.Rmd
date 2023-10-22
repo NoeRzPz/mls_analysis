@@ -207,7 +207,7 @@ Explore all primates traits distributions
 # Check continuous variables distribution
 p <- primates_traits %>% 
   select(`Adult weight (g)`, `Maximum longevity (yrs)`, LQ) %>%
-  ggpairs()
+  ggpairs(upper = list(continuous = wrap("cor", method = "spearman")))
 # save plot
 ggsave(plot = p, filename = file.path(resultsDir,"descriptive/primates_ggpairs.tiff"), dpi = 300, units = "in",width = 6, height = 6)
 
@@ -225,6 +225,21 @@ corrplot.mixed(cor_numer, number.digits = 2, tl.col = "black") # Set the color o
 
 # Close the device
 dev.off()
+```
+Explore number species in each family
+
+```{r}
+# Create a table of primate families, convert it to a data frame for ggplot
+family_counts <- data.frame(table(primates_traits$Family)) %>%
+  # Order it by abundance
+  arrange(desc(Freq))
+
+# Create the ggplot barplot
+ggplot(family_counts, aes(x=reorder(Var1, Freq), y=Freq)) +
+  geom_bar(stat="identity") +
+  coord_flip() +  # Makes the bars horizontal
+  labs(title="Primate Families by Abundance", x="Family", y="Count") +
+  theme_classic()
 ```
 
 Plot phylogeny
@@ -347,7 +362,7 @@ circ <- ggtree(pruned_primates.tree2, layout = "circular") +
   geom_tree(aes(color = group), size = 1.5)   # Color branches/edges
 
 p3 <- gheatmap(circ, primates_lq_tree2, offset = .8, width = .2, colnames_angle = 95, colnames_offset_y = .05) + 
-  scale_fill_gradient2(name = "GD value", limits = c(-0.9,0.9), na.value = "grey50")
+  scale_fill_gradient2(name = "GD value", limits = c(-1,1), na.value = "grey50")
 
 p3
 # save plot
@@ -427,7 +442,7 @@ primates1SD <- primates_traits %>%
 
 primates1SD
 # save plot
-ggsave(plot = primates1SD, filename = file.path(resultsDir,"descriptive/extreme_byfamily.tiff"), dpi = 300, units = "in",width = 6, height = 6)
+ggsave(plot = primates1SD, filename = file.path(resultsDir,"descriptive/1SDextreme_byfamily.tiff"), dpi = 300, units = "in",width = 6, height = 6)
 ```
 
 ```{r LQ family distribution 1.5SD}
@@ -463,7 +478,7 @@ primatesSDs <- primates_traits %>%
 
 primatesSDs
 # save plot
-ggsave(plot = primates1SD, filename = file.path(resultsDir,"descriptive/extreme_byfamily.tiff"), dpi = 300, units = "in",width = 6, height = 6)
+ggsave(plot = primates1SD, filename = file.path(resultsDir,"descriptive/1.5SDextreme_byfamily.tiff"), dpi = 300, units = "in",width = 6, height = 6)
 ```
 
 Getting the spp names with extreme top values and extreme bottom values
@@ -579,7 +594,7 @@ scatterLQ <- primates_traits %>%
   theme_classic() + 
   labs_pubr() +
   theme(
-    legend.position = "bottom",
+    legend.position = "right",
     text = element_text(size = 16))
 
 scatterLQ
@@ -600,12 +615,12 @@ scatterLQkg <- primates_traits %>%
   theme_classic() + 
   labs_pubr() +
   theme(
-    legend.position = "bottom",
+    legend.position = "right",
     text = element_text(size = 16))
 
 scatterLQkg
 # save plot
-ggsave(plot = scatterLQkg, filename = file.path(resultsDir,"descriptive/scatterLQkg.tiff"), dpi = 300, units = "in",width = 6, height = 6)
+ggsave(plot = scatterLQkg, filename = file.path(resultsDir,"descriptive/logscatterLQkg.tiff"), dpi = 300, units = "in",width = 6, height = 6)
 ```
 
 ```{r LQ vs BMass scatter}
@@ -950,7 +965,7 @@ primates <- primates_traits %>%
 
 primates
 # save plot
-ggsave(plot = primates, filename = file.path(resultsDir,"descriptive/primates_famdistributionr.tiff"), dpi = 300, units = "in",width = 6, height = 6)
+ggsave(plot = primates, filename = file.path(resultsDir,"descriptive/SD_resprimates_famdistributionr.tiff"), dpi = 300, units = "in",width = 6, height = 6)
 ```
 
 ```{r alejandro resi fam distributions}
