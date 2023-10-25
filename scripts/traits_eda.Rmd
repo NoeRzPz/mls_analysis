@@ -18,9 +18,6 @@ resultsDir <- file.path(workingDir,"out")
 ```
 
 ## Load packages
-```{r}
-#remotes::install_github('YuLab-SMU/ggtree')
-```
 
 ```{r libraries, message=FALSE}
 library(tidyverse)
@@ -39,6 +36,7 @@ library(tidytree)
 library(treeio)
 library(ggimage)
 library(ggnewscale)
+library(ggrepel)
 ```
 
 
@@ -140,6 +138,7 @@ pruned_primates.tree <- drop.tip(primates_tree, setdiff(primates_tree$tip.label,
 # Export tree for using it in caastools
 write.tree(pruned_primates.tree, file = file.path(dataDir,"/caas_tool_inputs/primates.tree.nwk"))
 
+
 # Match the order of pruned_primates.tree$tip.label
 primates_traits <- primates_traits %>%
   mutate(ordering = match(label, pruned_primates.tree$tip.label)) %>%
@@ -157,7 +156,11 @@ primates_traits <- primates_traits %>%
            LQ < Q1 - (1.5*IQR) ~ "Low_outlier",
            LQ > Q3 + (1.5*IQR) ~ "High_outlier",
            TRUE ~ "No"),
-         GD = LQ - global_median) %>% 
+         GD = LQ - global_median,
+         # create a column with abreviated name
+         short_name = str_replace(label, "^(.).*?_", "\\1.")) %>% 
+  # ^(.) captures the first character, .*?_ matches everything (in a non-greedy manner) up to the underscore
+  # \\1. replaces with the captured first letter followed by a dot
   group_by(Family) %>%  # Group by Family
   # Calculate each family median and standard deviation
   mutate(MedianFamLQ = median(LQ, na.rm = T),
@@ -170,11 +173,13 @@ primates_traits <- primates_traits %>%
          # Calculate each spp LQ family median differences 
          FD = LQ - MedianFamLQ) %>%
   ungroup()
+
 # Alejandro's column outlier was depicting if spp was on the top50, with LQoutlier only homo sapiens is a high_outlier and was on top50 on alejandro's column
 
 # Export LQ values for using them in caastools
 write.table(primates_traits[, c("label","LQ")], file.path(dataDir,"/caas_tool_inputs/LQ.tab"), sep = "\t", row.names = FALSE, quote = FALSE, col.names = FALSE)
 ```
+
 Prepare a file for caastools with our species:
 
 ```{r, eval=FALSE}
@@ -235,10 +240,10 @@ family_counts <- data.frame(table(primates_traits$Family)) %>%
   arrange(desc(Freq))
 
 # Create the ggplot barplot
-ggplot(family_counts, aes(x=reorder(Var1, Freq), y=Freq)) +
-  geom_bar(stat="identity") +
+ggplot(family_counts, aes(x = reorder(Var1, Freq), y = Freq)) +
+  geom_bar(stat = "identity") +
   coord_flip() +  # Makes the bars horizontal
-  labs(title="Primate Families by Abundance", x="Family", y="Count") +
+  labs(title = "Primate Families by Abundance", x = "Family", y = "Count") +
   theme_classic()
 ```
 
@@ -294,6 +299,9 @@ mrcas <- c(mrcas, mrca)
 nodes <- c(48, 64, 43, 46, 28, 70, 74, 29, 38, 37)
 names(nodes) <- c("Cercopithecidae", "Hominidae","Cebidae","Atelidae","Tarsiidae","Lemuridae","Cheirogaleidae","Daubentoniidae","Galagidae","Lorisidae")
 
+# Vector with the families ordered in the way they appear on the plylogenetic tree
+treeFam_ordered <- names(nodes)
+
 # Assing all nodes from that clade their corresponding family
 pruned_primates.tree2 <- groupClade(pruned_primates.tree2, nodes)
 
@@ -306,49 +314,6 @@ pruned_primates.tree2@data$group[pruned_primates.tree2@data$group == 0] <- NA
 
 Depict trait values on phylogeny
 
-```{r families as tips plot}
-# Exclude outlier from trait representation
-primates_traits2 <- primates_traits
-primates_traits2$LQ <- ifelse(primates_traits2$LQoutlier == "High_outlier", NA, primates_traits2$LQ)
-
-primates_lq_tree2 <- primates_traits2 %>% 
-  column_to_rownames(var = "label") %>% 
-  select(LQ)
-
-circ <- ggtree(pruned_primates.tree2, layout = "circular") +
-  # using a different shape to represent outliers
-  geom_tippoint(aes(color = Family, shape = ifelse(LQoutlier == "High_outlier", 4, 16), size = 3)) + 
-  scale_shape_identity() +
-  guides(size = "none") #remove size legend
-p1 <- gheatmap(circ, primates_lq_tree2, offset = .8, width = .2, colnames_angle = 95, colnames_offset_y = .05) + 
-  scale_fill_viridis_c(option = "A", name = "LQ\nvalue", na.value = "grey50") # Color tip labels. Using grey color for NA values (high outliers)
-
-p1
-# save plot
-ggsave(plot = p1, filename = file.path(resultsDir,"descriptive/ggtree_tips.tiff"), dpi = 300, units = "in",width = 6, height = 6)
-```
-
-
-```{r families as edges}
-# Exclude outlier from trait representation
-primates_traits2 <- primates_traits
-primates_traits2$LQ <- ifelse(primates_traits2$LQoutlier == "High_outlier", NA, primates_traits2$LQ)
-
-primates_lq_tree2 <- primates_traits2 %>% 
-  column_to_rownames(var = "label") %>% 
-  select(LQ)
-
-circ <- ggtree(pruned_primates.tree2, layout = "circular") +
-  geom_tree(aes(color = group), size = 1.5)   # Color branches/edges
-
-p2 <- gheatmap(circ, primates_lq_tree2, offset = .8, width = .2, colnames_angle = 95, colnames_offset_y = .05) + 
-  scale_fill_viridis_c(option = "A", name = "LQ\nvalue", na.value = "grey50")  
-
-p2
-# save plot
-ggsave(plot = p2, filename = file.path(resultsDir,"descriptive/ggtree_lines.tiff"), dpi = 300, units = "in",width = 6, height = 6)
-```
-
 ```{r Global median differences}
 # Exclude outlier from trait representation
 primates_traits2 <- primates_traits
@@ -359,8 +324,9 @@ primates_lq_tree2 <- primates_traits2 %>%
   select(GD)
 
 circ <- ggtree(pruned_primates.tree2, layout = "circular") +
-  geom_tree(aes(color = group), size = 1.5)   # Color branches/edges
-
+  geom_tree(aes(color = group), size = 1.5) +  # Color branches/edges
+  labs(color = "Family")  # set the legend title
+  
 p3 <- gheatmap(circ, primates_lq_tree2, offset = .8, width = .2, colnames_angle = 95, colnames_offset_y = .05) + 
   scale_fill_gradient2(name = "GD value", limits = c(-1,1), na.value = "grey50")
 
@@ -379,7 +345,8 @@ primates_lq_tree2 <- primates_traits2 %>%
   select(FD)
 
 circ <- ggtree(pruned_primates.tree2, layout = "circular") +
-  geom_tree(aes(color = group), size = 1.5)   # Color branches/edges
+  geom_tree(aes(color = group), size = 1.5) +  # Color branches/edges
+  labs(color = "Family")  # set the legend title
 
 p4 <- gheatmap(circ, primates_lq_tree2, offset = .8, width = .2, colnames_angle = 95, colnames_offset_y = .05) + 
   scale_fill_gradient2(name = "FD value", limits = c(-1.05,1),  na.value = "grey50")
@@ -401,7 +368,8 @@ primates_lq_tree2 <- primates_traits2 %>%
   select(GD,FD)
 
 circ <- ggtree(pruned_primates.tree2, layout = "circular") +
-  geom_tree(aes(color = group), size = 1.5)   # Color branches/edges
+  geom_tree(aes(color = group), size = 1.5) +  # Color branches/edges
+  labs(color = "Family")  # set the legend title
 
 p5 <- gheatmap(circ, primates_lq_tree2, offset = .8, width = .2, colnames_angle = 95, colnames_offset_y = .05) + 
   scale_fill_gradient2(name = "Median difference", limits = c(-1.05,1),  na.value = "grey50")
@@ -415,10 +383,7 @@ ggsave(plot = p5, filename = file.path(resultsDir,"descriptive/ggtree_both_media
 
 ```{r LQ family distribution 1SD}
 # Calculate global median and standard deviation
-global_median <- median(primates_traits$LQ, na.rm = T)
-global_sd <- sd(primates_traits$LQ, na.rm = T) 
-# Order of Family apearance in the tree
-treeFam_ordered <- c("Cercopithecidae","Hominidae","Cebidae","Atelidae","Lemuridae","Cheirogaleidae","Daubentoniidae","Galagidae" ,"Lorisidae")
+
 primates1SD <- primates_traits %>% 
   group_by(Family) %>%
   ggplot(aes(x = Family, y = LQ, color = Family, fill = Family)) +
@@ -447,9 +412,6 @@ ggsave(plot = primates1SD, filename = file.path(resultsDir,"descriptive/1SDextre
 
 ```{r LQ family distribution 1.5SD}
 # Con 3SD ni con 2SD no sale nada
-# Calculate global median and standard deviation
-global_median <- median(primates_traits$LQ, na.rm = T)
-global_sd <- sd(primates_traits$LQ, na.rm = T) 
 
 primatesSDs <- primates_traits %>% 
   group_by(Family) %>%
@@ -512,7 +474,7 @@ bottom
 
 We try with another strategy, using quantiles
 
-```{r}
+```{r family quantiles}
 primates_q <- primates_traits %>% 
   group_by(Family) %>%
   mutate(spp_class = case_when(
@@ -544,32 +506,75 @@ primates_q
 ggsave(plot = primates_q, filename = file.path(resultsDir,"descriptive/primates_quantiles_famdistribution.tiff"), dpi = 300, units = "in",width = 6, height = 6)
 ```
 
+```{r global quantiles}
+primates_gq <- primates_traits %>% 
+  group_by(Family) %>%
+  mutate(spp_class = case_when(
+           LQ < (global_median) & LQ < Q1 ~ "Bottom species",
+           LQ > (global_median) & LQ > Q3 ~ "Top species",
+           TRUE ~ "Not extreme")) %>%
+  ggplot(aes(x = Family, y = LQ, color = Family, fill = Family)) +
+  geom_jitter(aes(shape = spp_class), size = 3) +
+  scale_x_discrete(limits = rev(treeFam_ordered)) + # Set the order here
+  # Represent each species with different shapes according the species clas they belong respect to their MLS
+  scale_shape_manual(values = c("Bottom species" = 22, "Not extreme" = 21,"Top species" = 24)) +
+  # Draw family median
+  stat_summary(fun.y = median, geom = "errorbar",
+               aes(ymax = ..y.., ymin = ..y..), linewidth = 1) +
+  # Dray global median
+  geom_hline(yintercept = median(primates_traits$LQ, na.rm = T), linetype = "dashed", color = "grey", linewidth = 1) +
+  coord_flip() +
+  labs(x = 'Family',
+    y = 'Longevity Quotient') +
+  theme_classic() + 
+  labs_pubr() +
+  theme(
+    legend.position = "none",
+    text = element_text(size = 18))
+
+primates_gq
+
+# save plot
+ggsave(plot = primates_gq, filename = file.path(resultsDir,"descriptive/primates_globalquantiles_distribution.tiff"), dpi = 300, units = "in",width = 6, height = 6)
+```
+
 Getting the spp names with extreme top values and extreme bottom values
 
 ```{r}
 top <- primates_q[["data"]]  %>%
   ungroup()  %>%
-  filter(spp_class == "Top species") %>%
-  select(Family, label) %>%
-  mutate(code = rep(1,nrow(.)))
+  filter(spp_class == "Top species") %>% 
+  select(Family, label, LQ)
 
 bottom <- primates_q[["data"]]   %>%
   ungroup()  %>%
-  filter(spp_class == "Bottom species") %>%
-  select(Family,label) %>%
-  # Add this variable to codify them as caastools requirements
-  mutate(code = rep(0,nrow(.)))
+  filter(spp_class == "Bottom species") %>% 
+  select(Family,label, LQ) 
 top
 bottom
 ```
-We keep only families with top and bottoms and also we keep 2 spp from Cercopithecidae family
+We keep only families with top and bottoms and also we keep 1 spp from Cercopithecidae family
 
 ```{r}
-extreme_LQ <- rbind(top, bottom)
+# Identifying common families
+common_families <- intersect(top$Family, bottom$Family)
+
+# Filtering rows from top and bottom species based on common families
+top <- top %>% filter(Family %in% common_families) %>%
+  filter(LQ > 1.88) %>% # By filtering by LQ value, we select only one species from Cercopithecidae
+  # Add this variable to codify them as caastools requirements
+  mutate(code = rep(1,nrow(.)))
+
+bottom <- bottom %>% filter(Family %in% common_families) %>%
+  # We only filter by values < an LQ threshold when the family is Cercopithecidae, to keep one species from them
+  filter(if_else(Family == "Cercopithecidae", LQ < 1.07, TRUE)) %>%
+  mutate(code = rep(0,nrow(.)))
+
+# Binding the rows together
+extreme_LQ <- rbind(top, bottom) 
 
 extreme_LQ <- extreme_LQ %>%
-  select(label,code) %>%
-  filter(!label %in% c("Macaca_fascicularis","Macaca_fuscata","Nasalis_larvatus","Trachypithecus_francoisi","Homo_sapiens","Cheirogaleus_medius"))
+  select(label,code)
 
 write.table(extreme_LQ, file.path(dataDir,"/caas_tool_inputs/LQ_config.txt"), sep = "\t", row.names = FALSE, quote = FALSE, col.names = FALSE)
 ```
@@ -688,6 +693,7 @@ ggsave(plot = scatterLQ, filename = file.path(resultsDir,"descriptive/scatterLQg
 ggsave(plot = scatterLQkg, filename = file.path(resultsDir,"descriptive/scatterLQkg.tiff"), dpi = 300, units = "in",width = 6, height = 6)
 ggsave(plot = scattermlskg, filename = file.path(resultsDir,"descriptive/scatter_mlskg.tiff"), dpi = 300, units = "in",width = 6, height = 6)
 ```
+
 Make scatter plot of weight vs MLS in between primates in our database
 
 ```{r primates, eval=FALSE}
@@ -717,61 +723,74 @@ ggsave(plot = scatter_g, filename = file.path(resultsDir,"descriptive/scatter_ml
 
 Building part B of figure 1
 
+Collapse tree at internal nodes corresponding with its family label
+
+```{r collapse tree by family}
+# This collapse tree by family
+p <- ggtree(pruned_primates.tree2, aes(color = group)) + theme(legend.position = 'none')
+famtree <- p %>% 
+  ggtree::collapse(node = 48) %>%
+  ggtree::collapse(node = 64) %>%
+  ggtree::collapse(node = 43) %>%
+  ggtree::collapse(node = 46) %>%
+  ggtree::collapse(node = 70) %>%
+  ggtree::collapse(node = 74) 
+
+# Store the tree 
+famtree <- famtree + geom_nodelab(aes(subset = !is.na(group)), align = TRUE, linetype = "solid")  + coord_fixed(ratio = 15) + theme(plot.margin = unit(c(0, 0, 1, 0), "cm"))
+```
+
 ```{r LQ figure 1 B}
- 
-# visualize the tree 
-tree_plot <- ggtree(pruned_primates.tree2) +
-  # add symbols colored by family
-  geom_tippoint(aes(color = Family)) +
-  theme(legend.position = "none") # This hides the legend
+selected_names <- primates_traits %>%
+  filter(label %in% extreme_LQ$label) %>%
+  select(short_name)
 
 # Order of Family apearance in the tree
-treeFam_ordered <- c("Cercopithecidae","Hominidae","Cebidae","Atelidae","Lemuridae","Cheirogaleidae","Daubentoniidae","Galagidae" ,"Lorisidae")
-#primates_traits$Family
-
 # Set the family column as an ordered factor based on the specified order
 #primates_traits$Family <- factor(primates_traits$Family, levels= rev(treeFam_ordered))
 
 primates_q <- primates_traits %>% 
   group_by(Family) %>%
   mutate(spp_class = case_when(
-           LQ < (global_median) & LQ < quantile(LQ, 0.25, na.rm=TRUE) ~ "Bottom species",
-           LQ > (global_median) & LQ > quantile(LQ, 0.75, na.rm=TRUE) ~ "Top species",
+           LQ < (global_median) & LQ < quantile(LQ, 0.25, na.rm=TRUE) ~ "Bottom",
+           LQ > (global_median) & LQ > quantile(LQ, 0.75, na.rm=TRUE) ~ "Top",
            TRUE ~ "Not extreme")) %>%
   ggplot(aes(x = Family, y = LQ, color = Family, fill = Family)) +
   geom_jitter(aes(shape = spp_class), size = 3) +
   scale_x_discrete(limits = rev(treeFam_ordered)) + # Set the order here
   # Represent each species with different shapes according the species clas they belong respect to their MLS
-  scale_shape_manual(values = c("Bottom species" = 22, "Not extreme" = 21,"Top species" = 24)) +
+  scale_shape_manual(values = c("Bottom" = 22, "Not extreme" = 21,"Top" = 24)) +
   # Draw family median
   stat_summary(fun.y = median, geom = "errorbar",
                aes(ymax = ..y.., ymin = ..y..), linewidth = 1) +
   # Draw global median
   geom_hline(yintercept = median(primates_traits$LQ, na.rm = T), linetype = "dashed", color = "grey", linewidth = 1) +
+  # Add repelled text labels for top and bottom species
+  geom_text_repel(aes(label = ifelse(short_name %in% selected_names$short_name, short_name, "")),
+    size = 3,
+    color = "black",
+    min.segment.length = 0.2,
+    point.padding = 0.3,
+    max.overlaps = Inf) +
   coord_flip() +
   labs(y = 'Longevity Quotient', shape = "") +
   theme_classic() + 
   labs_pubr() +
-  theme(axis.title.y = element_blank(),
-        axis.text.y = element_blank(),
-    legend.position = "right",
-    text = element_text(size = 16))
+  theme(axis.title.y = element_blank(), 
+        axis.title.x = element_text(size = 12), 
+        legend.position = "right",
+        legend.title = element_text(size = 8),
+        legend.text = element_text(size = 8),
+        text = element_text(size = 12)) +
+  guides(color = "none", fill = "none") + # remove family legend for color and fill
+  labs(shape = "Extreme species") # Set the legend title here
 
 # Combining the plots
-tree_LQdistribution <- plot_grid(tree_plot, primates_q, rel_widths = c(0.3, 0.7))#ncol=2,
+tree_LQdistribution <- plot_grid(famtree, primates_q, rel_widths = c(0.25, 0.75))#ncol=2,
 tree_LQdistribution
 
 # save plot
-ggsave(plot = tree_LQdistribution, filename = file.path(resultsDir,"descriptive/fig1_B.tiff"), dpi = 300, units = "in",width = 6, height = 6)
-```
-
-Collapse tree at internal nodes corresponding with its family label
-
-```{r, eval=FALSE}
-# This would do what I want (collapse by family) but does not work
-p <- ggtree(pruned_primates.tree2, aes(color=group)) + theme(legend.position='none')
-p %>% collapse(node= 64) + 
-  geom_point2(aes(subset=(node==64)), shape=21, size=5)
+ggsave(plot = tree_LQdistribution, filename = file.path(resultsDir,"descriptive/fig1_B.tiff"), dpi = 300)
 ```
 
 
@@ -851,6 +870,43 @@ combined_plot <- plot_grid(fig1, figC,  nrow = 2)
 ggsave(plot = combined_plot, filename = file.path(resultsDir,paste0("descriptive/figure_1.tiff")), dpi = 300, units = "in",width = 6, height = 6)
 ```
 
+Table displaying selected top and bottom species
+
+```{r}
+# Formatting the table using gt
+table_spp <- summary_data %>%
+  gt() %>%
+  # Set table title
+  tab_header(title = "Table. Lists of Discovered and Validated CAAS and Genes") %>%
+  # Set column labels
+  cols_label(
+    Scenario = "Scenario",
+    CAAS_discov = "CAAS",
+    Genes_discov = "Genes",
+    CAAS_valid = "CAAS",
+    Genes_valid = "Genes") %>%
+  # Group columns under 'Discovered' and 'Validated'
+  tab_spanner(
+    label = "Discovered",
+    columns = c("CAAS_discov", "Genes_discov")) %>%
+  tab_spanner(
+    label = "Validated",
+    columns = c("CAAS_valid", "Genes_valid")) %>%
+  # Add calculated numbers and percentages to the table
+  fmt_number(
+    columns = c("CAAS_discov", "Genes_discov", "CAAS_valid", "Genes_valid"),
+    decimals = 0) %>%
+  # Add the footnote
+  tab_footnote(
+    footnote = "NOTE.-Numbers in parentheses represent the percentage of bootstraped validated positions.",
+    locations = cells_body(columns = c("CAAS_valid", "Genes_valid")))
+
+# Display the table
+table_spp
+
+# Save the gt table as a Word document (experimental in `gt`)
+gt::gtsave(table_spp, filename = file.path(resultsDir, "descriptive/topbottom_spp_table.docx"))
+```
 
 Table to summarized traits of interest
 
