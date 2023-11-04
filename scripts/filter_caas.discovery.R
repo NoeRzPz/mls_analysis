@@ -11,6 +11,7 @@ library(clusterProfiler)
 library(DOSE)
 library(msigdbr)
 library(ggplot2)
+library(pheatmap)
 
 # Directories setting up
 workingDir <- getwd()
@@ -20,9 +21,9 @@ resultsDir <- file.path(workingDir,"out")
 # Load data 
 # discovery data frame 
 caas.discovery <- read_delim(file.path(resultsDir,"/caas/caastools_LQ_out/all.caas_discovery.tsv"), 
-                             delim = "\t", escape_double = FALSE, 
-                             trim_ws = TRUE)
-
+                             delim = "\t", escape_double = FALSE, trim_ws = TRUE)
+#ferre.caas <- read_delim(file.path(resultsDir,"/caas/caastools_LQ_out/all.caas_discovery.tsv"), 
+                         #delim = "\t", escape_double = FALSE, trim_ws = TRUE)
 # Backgroun genes
 background_genes <- read.table(file.path(resultsDir,"/caas/caastools_LQ_out/background_genes.txt"), header = FALSE, stringsAsFactors = FALSE)$V1
 
@@ -35,6 +36,60 @@ freq_table <- caas.discovery %>%
 
 # Export table
 write.table(freq_table , file.path(resultsDir,"/functional/CAAS_byFFGN.txt"), sep = "\t", row.names = FALSE, quote = FALSE, col.names = TRUE)
+# Create new columns to register if a species is present or not in a CAAS
+caas.discovery <- caas.discovery %>%
+  mutate(Macaca_fascicularis = ifelse(str_detect(FFG, "Macaca_fascicularis"), 1, 0),
+         Ateles_geoffroyi = ifelse(str_detect(FFG, "Ateles_geoffroyi"), 1, 0),
+         Sapajus_apella = ifelse(str_detect(FFG, "Sapajus_apella"), 1, 0),
+         Eulemur_mongoz = ifelse(str_detect(FFG, "Eulemur_mongoz"), 1, 0))
+
+# Explore what are the species contributing more to each case
+freq_spp <- caas.discovery %>%
+  group_by(FFGN) %>%
+  summarise(Macaca_fascicularis = sum(Macaca_fascicularis),
+            Ateles_geoffroyi = sum(Ateles_geoffroyi),
+            Sapajus_apella = sum(Sapajus_apella),
+            Eulemur_mongoz = sum(Eulemur_mongoz)) %>%
+  arrange(FFGN) 
+
+# Remove the FFGN column for the heatmap as it's not needed
+
+# Convert the dataframe to a matrix, excluding the FFGN column
+heatmap_data <- as.matrix(freq_spp[,-1])
+
+# Add the FFGN as row names to the matrix
+rownames(heatmap_data) <- freq_spp$FFGN
+
+# Now try generating the heatmap
+# Escale by number of foreground species found where CAAS were found
+pheatmap(heatmap_data, scale = "row", cluster_rows = FALSE,  cluster_cols = TRUE)
+
+# Create the same plot with background spp
+freq_spp <- caas.discovery %>%
+  mutate(Alouatta_palliata = ifelse(str_detect(FBG, "Alouatta_palliata"), 1, 0),
+        Nasalis_larvatus = ifelse(str_detect(FBG, "Nasalis_larvatus"), 1, 0),
+        Saguinus_imperator = ifelse(str_detect(FBG, "Saguinus_imperator"), 1, 0),
+        Prolemur_simus = ifelse(str_detect(FBG, "Prolemur_simus"), 1, 0)) %>%
+  group_by(FBGN) %>%
+  summarise(Alouatta_palliata = sum(Alouatta_palliata),
+            Nasalis_larvatus = sum(Nasalis_larvatus),
+            Saguinus_imperator = sum(Saguinus_imperator),
+            Prolemur_simus = sum(Prolemur_simus)) %>%
+  arrange(FBGN) 
+
+# Remove the FBGN column for the heatmap as it's not needed
+# Convert the dataframe to a matrix, excluding the FFGN column
+heatmap_data <- as.matrix(freq_spp[,-1])
+
+# Add the FFGN as row names to the matrix
+rownames(heatmap_data) <- freq_spp$FBGN
+
+# Now try generating the heatmap
+# Escale by number of foreground species found where CAAS were found
+pheatmap(heatmap_data, scale = "row", cluster_rows = FALSE,  cluster_cols = TRUE)
+
+
+
 
 # Plot histogram of hipergeometric test pvalues
 pva_histo <- ggplot(data = caas.discovery, aes(x = Pvalue)) + 
