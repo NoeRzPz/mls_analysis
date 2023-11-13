@@ -12,6 +12,7 @@ library(DOSE)
 library(msigdbr)
 library(ggplot2)
 library(pheatmap)
+library(ape)
 
 # Directories setting up
 workingDir <- getwd()
@@ -26,6 +27,10 @@ caas.discovery <- read_delim(file.path(resultsDir,"/caas/caastools_LQ_out/all.ca
                          #delim = "\t", escape_double = FALSE, trim_ws = TRUE)
 # Backgroun genes
 background_genes <- read.table(file.path(resultsDir,"/caas/caastools_LQ_out/background_genes.txt"), header = FALSE, stringsAsFactors = FALSE)$V1
+
+# spp families
+spp_fam <- read_delim(file.path(dataDir,"/caas_tool_inputs/my_sp2fam_210727.tab"), 
+                      delim = "\t", escape_double = FALSE, trim_ws = TRUE)
 
 # CAAS distributions by Number of species found in the FG group (it excludes those ones having an indel)
 freq_table <- caas.discovery %>%
@@ -46,10 +51,10 @@ caas.discovery <- caas.discovery %>%
 # Explore what are the species contributing more to each case
 freq_spp <- caas.discovery %>%
   group_by(FFGN) %>%
-  summarise(Macaca_fascicularis = sum(Macaca_fascicularis),
-            Ateles_geoffroyi = sum(Ateles_geoffroyi),
-            Sapajus_apella = sum(Sapajus_apella),
-            Eulemur_mongoz = sum(Eulemur_mongoz)) %>%
+  summarise(`Macaca fascicularis` = sum(Macaca_fascicularis),
+            `Ateles geoffroyi` = sum(Ateles_geoffroyi),
+            `Sapajus apella` = sum(Sapajus_apella),
+            `Eulemur mongoz` = sum(Eulemur_mongoz)) %>%
   arrange(FFGN) 
 
 # Remove the FFGN column for the heatmap as it's not needed
@@ -60,9 +65,31 @@ heatmap_data <- as.matrix(freq_spp[,-1])
 # Add the FFGN as row names to the matrix
 rownames(heatmap_data) <- freq_spp$FFGN
 
-# Now try generating the heatmap
-# Escale by number of foreground species found where CAAS were found
-pheatmap(heatmap_data, scale = "row", cluster_rows = FALSE,  cluster_cols = TRUE)
+# Ensure the species names match the column names of your heatmap data
+heatmap_data_colnames <- colnames(heatmap_data)
+
+# Create the annotation dataframe with family info
+annotation <- spp_fam %>%
+  mutate(Family = str_replace(Family, "\\w+_", ""),
+         Species = str_replace(Species, "_", " ")) %>%
+  filter(Species %in% heatmap_data_colnames) %>%
+  column_to_rownames(var = "Species")
+
+# Assuming 'unique_families' is a vector of all unique family names from your 'species_families' data
+unique_families <- unique(annotation$Family)
+
+# Create a color vector where each family is assigned an hexadecimal value
+family_colors <- setNames(c("#f8766d", "#9590ff", "#a3a500", "#d89000"), unique_families)
+
+# Create a list for annotation_colors
+annotation_colors <- list(Family = family_colors)
+
+# Create heatmap. Escale by number of foreground species found where CAAS were found
+pheatmap(heatmap_data, scale = "row", cluster_rows = FALSE,  cluster_cols = TRUE,
+         annotation_col = annotation,
+         annotation_colors = annotation_colors,
+         angle_col = 315, # To show column names with an angle
+         fontsize_row = 12) # To show rows with bigger font size
 
 # Create the same plot with background spp
 freq_spp <- caas.discovery %>%
@@ -71,10 +98,10 @@ freq_spp <- caas.discovery %>%
         Saguinus_imperator = ifelse(str_detect(FBG, "Saguinus_imperator"), 1, 0),
         Prolemur_simus = ifelse(str_detect(FBG, "Prolemur_simus"), 1, 0)) %>%
   group_by(FBGN) %>%
-  summarise(Alouatta_palliata = sum(Alouatta_palliata),
-            Nasalis_larvatus = sum(Nasalis_larvatus),
-            Saguinus_imperator = sum(Saguinus_imperator),
-            Prolemur_simus = sum(Prolemur_simus)) %>%
+  summarise(`Alouatta palliata` = sum(Alouatta_palliata),
+            `Nasalis larvatus` = sum(Nasalis_larvatus),
+            `Saguinus imperator` = sum(Saguinus_imperator),
+            `Prolemur simus` = sum(Prolemur_simus)) %>%
   arrange(FBGN) 
 
 # Remove the FBGN column for the heatmap as it's not needed
@@ -84,10 +111,32 @@ heatmap_data <- as.matrix(freq_spp[,-1])
 # Add the FFGN as row names to the matrix
 rownames(heatmap_data) <- freq_spp$FBGN
 
-# Now try generating the heatmap
-# Escale by number of foreground species found where CAAS were found
-pheatmap(heatmap_data, scale = "row", cluster_rows = FALSE,  cluster_cols = TRUE)
+# Ensure the species names match the column names of your heatmap data
+heatmap_data_colnames <- colnames(heatmap_data)
 
+# Create the annotation dataframe with family info
+annotation <- spp_fam %>%
+  mutate(Family = str_replace(Family, "\\w+_", ""),
+         Species = str_replace(Species, "_", " ")) %>%
+  filter(Species %in% heatmap_data_colnames) %>%
+  column_to_rownames(var = "Species")
+
+annotation[rownames(annotation) == "Saguinus imperator",] <- "Cebidae"
+# Assuming 'unique_families' is a vector of all unique family names from your 'species_families' data
+unique_families <- unique(annotation$Family)
+
+# Create a color vector where each family is assigned an hexadecimal value
+family_colors <- setNames(c("#f8766d", "#a3a500", "#9590ff", "#d89000"), unique_families)
+
+# Create a list for annotation_colors
+annotation_colors <- list(Family = family_colors)
+
+# Create heatmap. Escale by number of foreground species found where CAAS were found
+pheatmap(heatmap_data, scale = "row", cluster_rows = FALSE,  cluster_cols = TRUE,
+         annotation_col = annotation,
+         annotation_colors = annotation_colors,
+         angle_col = 315, # To show column names with an angle
+         fontsize_row = 12) # To show rows with bigger font size
 
 
 
@@ -229,14 +278,56 @@ write.table(tab_byFGN , file.path(resultsDir,"/functional/CAAS_3FFGN2FBGN.txt"),
 
 df_byFGN <- df_byFGN %>%
   filter(Pvalue <= 0.05)
-
+write.table(df_byFGN , file.path(resultsDir,"/functional/df_byFGN.txt"), sep = "\t", row.names = FALSE, quote = FALSE, col.names = TRUE)
 # We select gene symbols for the ORA
 genes_byFGN <- unique(df_byFGN$Gene)
 # Export gene symbols from this subset
 write.table(genes_byFGN, file.path(resultsDir,"/functional/genes_byFGN.tab"), sep = "\t", row.names = FALSE, quote = FALSE, col.names = FALSE)
 
+library(seqinr)
+# Replace 'alignment.phy' with your PHYLIP file
+# Initialize an empty list to store substitutions of interest for each gene
+substitutions_of_interest <- list()
+
+for (gene in unique(df_byFGN$Gene)) {  # Ensure unique genes if there are duplicates
+  # Read the alignment file
+  alignment <- read.alignment(file.path(dataDir, paste0("/palignments.231026/", gene, ".Homo_sapiens.filter2.phy")), forceToLower = FALSE, format = 'phylip')
+  # Define the top LQ species and the substitutions of interest
+  top_LQ_spp <- c('Homo_sapiens', 'Macaca_fuscata', 'Macaca_mulatta', 'Macaca_mulatta','Cheirogaleus_medius') 
+  # Extract the amino acid substitution from the df_byFGN dataframe
+  aa <- str_extract(df_byFGN[df_byFGN$Gene == gene, 'Substitution'], "^.")
+  
+  # Extract the position
+  location <- df_byFGN[df_byFGN$Gene == gene, 'Position']$Position
+  
+  # Store the substitution of interest for the current gene
+  substitutions_of_interest[[as.character(location)]] <- aa
+# Now, substitutions_of_interest will be a list with gene names as keys
+# and another list as a value where positions are keys and amino acids are values
+
+
+  # Check for each substitution in the species of interest
+  for(species in top_LQ_spp) {
+    # Extract the sequence for the species
+    seq <- as.character(alignment[species,])
+    for(position in names(substitutions_of_interest)) {
+      amino_acid <- substitutions_of_interest[[position]]
+      numeric_position <- as.numeric(position) - 1
+      if(substr(seq, numeric_position, numeric_position) == amino_acid) {
+        cat(species, "has the substitution", amino_acid, "at position", position, "\n")
+        }
+      }
+    }
+}
+alignment <- read.alignment(file.path(dataDir, paste0("/palignments.231026/", "AADACL3", ".Homo_sapiens.filter2.phy")), forceToLower = FALSE, format = 'phylip')
+seq <- as.character(alignment[species,])
+aa <- str_extract(df_byFGN[df_byFGN$Gene == gene, 'Substitution'], "^.")
+location <- df_byFGN[df_byFGN$Gene == gene, 'Position']$Position
+amino_acid <- substitutions_of_interest[[position]]
+numeric_position <- as.numeric(position) - 1
+
 # Obtain desired types of IDs from the RefSeq IDs from significant genes
-ann <- bitr(symbol_id, fromType = "SYMBOL", toType =  c("SYMBOL","ENSEMBL","ENTREZID"), OrgDb = org.Hs.eg.db)
+ann <- bitr(genes_byFGN, fromType = "SYMBOL", toType =  c("SYMBOL","ENSEMBL","ENTREZID"), OrgDb = org.Hs.eg.db)
 
 # Do the same for all genes studied
 background_genes <- bitr(unique(background_genes), fromType = "SYMBOL", toType =  c("SYMBOL","ENSEMBL","ENTREZID"), OrgDb = org.Hs.eg.db)
@@ -254,16 +345,23 @@ ego <- enrichGO(gene          = unique(ann$ENSEMBL),
                 universe = unique(background_genes$ENSEMBL))
 
 dim(ego)
+# Convert GeneRatio and BgRatio to numeric and calculate Enrichment Ratio
+ego_data <- ego@result %>%
+  separate(GeneRatio, into = c("GeneNum", "GeneDenom"), sep = "/") %>%
+  separate(BgRatio, into = c("BgNum", "BgDenom"), sep = "/") %>%
+  mutate(across(c(GeneNum, GeneDenom, BgNum, BgDenom), as.numeric)) %>%
+  mutate(ER = (GeneNum / GeneDenom) / (BgNum / BgDenom)) 
+
 # Eliminate redundant terms, with a similarity > than 0.7 and select as representative term from the redundant ones the term with the smallest adjusted pvale
 #ego <- simplify(ego, cutoff = 0.7, by = "p.adjust", select_fun = min)
 
 #dim(ego)
 # plot no significant results
-ggplot(ego@result[1:15,], aes(x = reorder(Description, Count), y = Count, fill = -p.adjust)) +
+ggplot(ego_data[1:15,], aes(x = reorder(Description, ER), y = ER, fill = -p.adjust)) +
   geom_bar(stat = "identity") +
   coord_flip() +
   scale_fill_continuous(low = "blue", high = "red") +
-  labs(x = "", y = "", fill = "FDR") +
+  labs(x = "", y = "Enrichment Ratio", fill = "FDR") +
   theme_classic() +
   theme(axis.text = element_text(size = 11))
 
@@ -299,6 +397,21 @@ ego <- enrichGO(gene          = unique(ann$ENSEMBL),
 dim(ego)
 # Eliminate redundant terms, with a similarity > than 0.7 and select as representative term from the redundant ones the term with the smallest adjusted pvale
 #ego <- simplify(ego, cutoff = 0.7, by = "p.adjust", select_fun = min)
+# Convert GeneRatio and BgRatio to numeric and calculate Enrichment Ratio
+ego_data <- ego@result %>%
+  separate(GeneRatio, into = c("GeneNum", "GeneDenom"), sep = "/") %>%
+  separate(BgRatio, into = c("BgNum", "BgDenom"), sep = "/") %>%
+  mutate(across(c(GeneNum, GeneDenom, BgNum, BgDenom), as.numeric)) %>%
+  mutate(ER = (GeneNum / GeneDenom) / (BgNum / BgDenom)) 
+
+# plot no significant results
+ggplot(ego_data[1:15,], aes(x = reorder(Description, ER), y = ER, fill = p.adjust)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  scale_fill_continuous(low = "blue", high = "red") +
+  labs(x = "", y = "Enrichment Ratio", fill = "FDR") +
+  theme_classic() +
+  theme(axis.text = element_text(size = 11))
 
 #dim(ego)
 p1 <- goplot(ego)
@@ -326,6 +439,22 @@ kk <- enrichKEGG(gene         = unique(ann$ENTREZID),
                  qvalueCutoff  = 0.25, 
                  minGSSize     = 10,
                  maxGSSize     = 600)
+dim(kk)
+# Convert GeneRatio and BgRatio to numeric and calculate Enrichment Ratio
+kk_data <- kk@result %>%
+  separate(GeneRatio, into = c("GeneNum", "GeneDenom"), sep = "/") %>%
+  separate(BgRatio, into = c("BgNum", "BgDenom"), sep = "/") %>%
+  mutate(across(c(GeneNum, GeneDenom, BgNum, BgDenom), as.numeric)) %>%
+  mutate(ER = (GeneNum / GeneDenom) / (BgNum / BgDenom)) 
+
+# plot no significant results
+ggplot(kk_data[1:3,], aes(x = reorder(Description, ER), y = ER, fill = -p.adjust)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  scale_fill_continuous(low = "blue", high = "red") +
+  labs(x = "", y = "Enrichment Ratio", fill = "FDR") +
+  theme_classic() +
+  theme(axis.text = element_text(size = 11))
 
 barplot(kk, showCategory = 15) 
 dotplot(kk, showCategory = 15)
@@ -342,7 +471,7 @@ kk <- enrichMKEGG(gene = unique(ann$ENTREZID),
                    maxGSSize     = 600)
 
 kk <- enrichDO(gene          = unique(ann$ENTREZID),
-                ont           = "DO",
+               ont           = "DO",
                 pvalueCutoff  = 1,
                 pAdjustMethod = "BH",
                 universe      = unique(background_genes$ENTREZID),
@@ -350,13 +479,22 @@ kk <- enrichDO(gene          = unique(ann$ENTREZID),
                 maxGSSize     = 600,
                 qvalueCutoff  = 0.25,
                 readable      = TRUE)
-ggplot(kk@result[1:10,], aes(x = reorder(Description, Count), y = Count, fill = -p.adjust)) +
+# Convert GeneRatio and BgRatio to numeric and calculate Enrichment Ratio
+kk_data <- kk@result %>%
+  separate(GeneRatio, into = c("GeneNum", "GeneDenom"), sep = "/") %>%
+  separate(BgRatio, into = c("BgNum", "BgDenom"), sep = "/") %>%
+  mutate(across(c(GeneNum, GeneDenom, BgNum, BgDenom), as.numeric)) %>%
+  mutate(ER = (GeneNum / GeneDenom) / (BgNum / BgDenom)) 
+
+# plot no significant results
+ggplot(kk_data[1:5,], aes(x = reorder(Description, ER), y = ER, fill = -p.adjust)) +
   geom_bar(stat = "identity") +
   coord_flip() +
   scale_fill_continuous(low = "blue", high = "red") +
-  labs(x = "", y = "", fill = "p.adjust") +
+  labs(x = "", y = "Enrichment Ratio", fill = "FDR") +
   theme_classic() +
   theme(axis.text = element_text(size = 11))
+
 
 kk <- enrichNCG(unique(ann$ENTREZID),
                  pvalueCutoff  = 1,
@@ -366,6 +504,22 @@ kk <- enrichNCG(unique(ann$ENTREZID),
                  maxGSSize     = 600,
                  qvalueCutoff  = 0.25,
                  readable = TRUE) 
+dim(kk)
+# Convert GeneRatio and BgRatio to numeric and calculate Enrichment Ratio
+kk_data <- kk@result %>%
+  separate(GeneRatio, into = c("GeneNum", "GeneDenom"), sep = "/") %>%
+  separate(BgRatio, into = c("BgNum", "BgDenom"), sep = "/") %>%
+  mutate(across(c(GeneNum, GeneDenom, BgNum, BgDenom), as.numeric)) %>%
+  mutate(ER = (GeneNum / GeneDenom) / (BgNum / BgDenom)) 
+
+# plot no significant results
+ggplot(kk_data[1:5,], aes(x = reorder(Description, ER), y = ER, fill = -p.adjust)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  scale_fill_continuous(low = "blue", high = "red") +
+  labs(x = "", y = "Enrichment Ratio", fill = "FDR") +
+  theme_classic() +
+  theme(axis.text = element_text(size = 11))
 
 kk <- enrichDGN(unique(ann$ENTREZID),
                  pAdjustMethod = "BH",
@@ -375,6 +529,23 @@ kk <- enrichDGN(unique(ann$ENTREZID),
                 pvalueCutoff  = 1,
                 qvalueCutoff  = 0.25,
                 readable = TRUE) 
+dim(kk)
+# Convert GeneRatio and BgRatio to numeric and calculate Enrichment Ratio
+kk_data <- kk@result %>%
+  separate(GeneRatio, into = c("GeneNum", "GeneDenom"), sep = "/") %>%
+  separate(BgRatio, into = c("BgNum", "BgDenom"), sep = "/") %>%
+  mutate(across(c(GeneNum, GeneDenom, BgNum, BgDenom), as.numeric)) %>%
+  mutate(ER = (GeneNum / GeneDenom) / (BgNum / BgDenom)) 
+
+# plot no significant results
+ggplot(kk_data[1:5,], aes(x = reorder(Description, ER), y = ER, fill = -p.adjust)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  scale_fill_continuous(low = "blue", high = "red") +
+  labs(x = "", y = "Enrichment Ratio", fill = "FDR") +
+  theme_classic() +
+  theme(axis.text = element_text(size = 11))
+
 m_t2g <- msigdbr(species = "Homo sapiens", category = "C3") %>% 
   dplyr::select(gs_name, entrez_gene)
 
@@ -386,6 +557,34 @@ kk <- enricher(unique(ann$ENTREZID),
                pvalueCutoff  = 1,
                qvalueCutoff  = 0.25,
                TERM2GENE = m_t2g)
+#C7: immunologic signature gene sets
+m_t2g <- msigdbr(species = "Homo sapiens", category = "C7") %>% 
+  dplyr::select(gs_name, entrez_gene)
+
+kk <- enricher(unique(ann$ENTREZID),
+               pAdjustMethod = "BH", 
+               universe      = unique(background_genes$ENTREZID),
+               minGSSize     = 10,
+               maxGSSize     = 600,
+               pvalueCutoff  = 1,
+               qvalueCutoff  = 0.25,
+               TERM2GENE = m_t2g)
+dim(kk)
+# Convert GeneRatio and BgRatio to numeric and calculate Enrichment Ratio
+kk_data <- kk@result %>%
+  separate(GeneRatio, into = c("GeneNum", "GeneDenom"), sep = "/") %>%
+  separate(BgRatio, into = c("BgNum", "BgDenom"), sep = "/") %>%
+  mutate(across(c(GeneNum, GeneDenom, BgNum, BgDenom), as.numeric)) %>%
+  mutate(ER = (GeneNum / GeneDenom) / (BgNum / BgDenom)) 
+
+# plot no significant results
+ggplot(kk_data[1:5,], aes(x = reorder(Description, ER), y = ER, fill = -p.adjust)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  scale_fill_continuous(low = "blue", high = "red") +
+  labs(x = "", y = "Enrichment Ratio", fill = "FDR") +
+  theme_classic() +
+  theme(axis.text = element_text(size = 11))
 
 hpo_results <- enrichHP(gene          = unique(ann$ENSEMBL),
                         OrgDb         = org.Hs.eg.db,
@@ -393,16 +592,34 @@ hpo_results <- enrichHP(gene          = unique(ann$ENSEMBL),
                         ont           = i,
                         pAdjustMethod = "BH",
                         minGSSize = 10,
-                        maxGSSize = 500,
-                        pvalueCutoff  = 0.05, 
-                        qvalueCutoff  = 0.05, 
+                        maxGSSize = 600,
+                        pvalueCutoff  = 1, 
+                        qvalueCutoff  = 0.25, 
                         readable = TRUE, 
                         universe = unique(background_genes$ENSEMBL))
 
+dim(hpo_results)
+# Convert GeneRatio and BgRatio to numeric and calculate Enrichment Ratio
+kk_data <- hpo_results@result %>%
+  separate(GeneRatio, into = c("GeneNum", "GeneDenom"), sep = "/") %>%
+  separate(BgRatio, into = c("BgNum", "BgDenom"), sep = "/") %>%
+  mutate(across(c(GeneNum, GeneDenom, BgNum, BgDenom), as.numeric)) %>%
+  mutate(ER = (GeneNum / GeneDenom) / (BgNum / BgDenom)) 
 
+# plot no significant results
+ggplot(kk_data[1:5,], aes(x = reorder(Description, ER), y = ER, fill = -p.adjust)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  scale_fill_continuous(low = "blue", high = "red") +
+  labs(x = "", y = "Enrichment Ratio", fill = "FDR") +
+  theme_classic() +
+  theme(axis.text = element_text(size = 11))
 
+# ferre validated by RRPP 
+ferre.discovery <- read_delim(file.path(dataDir,"/ferre_validatedRRPP.txt"),col_names = FALSE ,
+                              delim = "\t", escape_double = FALSE, trim_ws = TRUE)$X1
 
-
+ferre.discovery <- unique(ferre.discovery)
 
 
 # CAAS filtered by Missing species in the FG group and Missing species in BG group
