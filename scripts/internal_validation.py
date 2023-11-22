@@ -3,6 +3,7 @@ import pandas as pd
 import os
 import re
 import glob
+import sys
 
 # Define your data directories
 dataDir = '~/mls_analysis/data/'
@@ -12,8 +13,19 @@ outDir = '~/mls_analysis/out/'
 expanded_dataDir = os.path.expanduser(dataDir)
 expanded_outDir = os.path.expanduser(outDir)
 
+# Check if the file path argument is provided
+if len(sys.argv) < 3:
+    print("Please provide a CAAS file path and species file path as arguments.")
+    sys.exit(1)
+
+# Assign the relative file path from the first command-line argument
+relative_file_path = sys.argv[1]
+
 # File paths for the dataframes saved from R
-caasfile_path = os.path.join(expanded_outDir, "functional/df_byFGN.txt")
+# File for families contrast
+# Combine the base directory with the relative file path
+caasfile_path = os.path.join(expanded_outDir, relative_file_path)
+
 traitfile_path = os.path.join(expanded_outDir, "primates_traits.csv")
 
 # Read the dataframe into a pandas DataFrame
@@ -36,7 +48,20 @@ def short_substitution(substitution):
     return list(short_aa) if len(short_aa) > 1 else [short_aa]
 
 # Define the species and the substitutions of interest
-intermediate_quantile_spp = ['Callithrix_jacchus','Cebus_albifrons','Theropithecus_gelada','Mandrillus_sphinx','Mandrillus_leucophaeus','Cercopithecus_neglectus','Cercopithecus_mona','Allenopithecus_nigroviridis','Erythrocebus_patas','Rhinopithecus_roxellana','Colobus_angolensis','Pan_paniscus','Pan_troglodytes','Gorilla_gorilla','Carlito_syrichta','Daubentonia_madagascariensis','Eulemur_fulvus','Eulemur_macaco','Lemur_catta','Microcebus_murinus','Nycticebus_coucang','Otolemur_garnettii']
+
+# Assign the other species file path from the command-line argument
+other_spp_filepath = sys.argv[2]
+other_spp_file_path = os.path.join(expanded_outDir,other_spp_filepath)
+
+# Initialize an empty list to store the species names
+intermediate_quantile_spp = []
+
+# Open the file and read each line
+with open(other_spp_file_path, 'r') as file:
+    for line in file:
+        # Add the species name to the list, stripping any trailing newline characters
+        intermediate_quantile_spp.append(line.strip())
+
 
 # Create a list to hold the data for the new DataFrame
 species_classification_data = []
@@ -57,13 +82,15 @@ for gene in df_byFGN['Gene'].unique():
         position = row['Position']
 
         long_aas = long_substitution(row['Substitution'])
-        short_aas = short_substitution(row['Substitution'])
-
-        if (position in substitutions_long) and (position in substitutions_short):
+        if position in substitutions_long:
             substitutions_long[position] += long_aas
-            substitutions_short[position] += short_aas
         else:
             substitutions_long[position] = long_aas
+
+        short_aas = short_substitution(row['Substitution'])
+        if position in substitutions_short:
+            substitutions_short[position] += short_aas
+        else:
             substitutions_short[position] = short_aas
             
     # Read the alignment file
@@ -83,34 +110,34 @@ for gene in df_byFGN['Gene'].unique():
     # Check for each substitution in the species of interest
     for record in alignment:
         if record.id in intermediate_quantile_spp:
-            # Default classification
-            life_classification = None
-            lq = None
-            for position, amino_acids in substitutions_long.items():
-                # Check if the sequence at the position matches any of the amino acids
-                if record.seq[position] in amino_acids:
+            for position in gene_data['Position'].unique():
+                # Default classification
+                life_classification = None
+                lq = None
+
+                # Check long substitutions
+                if position in substitutions_long and record.seq[position] in substitutions_long[position]:
                     print(f"CAAS {position} {df_byFGN.loc[df_byFGN['Position'] == position, 'Substitution'].values[0]} in {gene}, {record.id} has long-life AA")
                     life_classification = 'Long'
                     lq = traits.loc[traits['label'] == record.id, 'LQ'].values[0]
 
-            for position, amino_acids in substitutions_short.items():
-                # Check if the sequence at the position matches any of the amino acids
-                if record.seq[position] in amino_acids:
+                # Check short substitutions
+                if position in substitutions_short and record.seq[position] in substitutions_short[position]:
                     print(f"CAAS {position} {df_byFGN.loc[df_byFGN['Position'] == position, 'Substitution'].values[0]} in {gene}, {record.id} has short-life AA")
                     life_classification = 'Short'
                     lq = traits.loc[traits['label'] == record.id, 'LQ'].values[0]
 
-            # Ensure we only add records where a classification was made
-            if life_classification:
-                # Add the data to our list
-                species_classification_data.append({
-                    'Gene': gene,
-                    'Position': position,
-                    'Substitution': row['Substitution'],
-                    'label': record.id,
-                    'type_LQ': life_classification,
-                    'LQ': lq
-                    })
+                # Ensure we only add records where a classification was made
+                if life_classification:
+                    # Add the data to our list
+                    species_classification_data.append({
+                        'Gene': gene,
+                        'Position': position,
+                        'Substitution': row['Substitution'],
+                        'label': record.id,
+                        'type_LQ': life_classification,
+                        'LQ': lq
+                        })
 # Create a DataFrame from the collected data
 df_classification = pd.DataFrame(species_classification_data)
 
