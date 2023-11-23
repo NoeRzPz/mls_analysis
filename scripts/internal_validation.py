@@ -141,8 +141,19 @@ for gene in df_byFGN['Gene'].unique():
 # Create a DataFrame from the collected data
 df_classification = pd.DataFrame(species_classification_data)
 
+# Get the prefix from the first command-line argument
+file_name_parts = os.path.basename(sys.argv[1]).split('_')
+if len(file_name_parts) >= 2:
+    file_prefix = '_'.join(file_name_parts[:2])
+else:
+    # Handle case where there's only one part or none
+    file_prefix = file_name_parts[0] if file_name_parts else "default"
+
+# Append the prefix to the output file name
+output_file_name = f"{file_prefix}_sppclassification_results.tab"
+
 # Define the path for the output CSV file
-output_file_path = os.path.join(expanded_outDir, "functional/sppclassification_results.tab")
+output_file_path = os.path.join(expanded_outDir, f"functional/{output_file_name}")
 
 # Export the DataFrame to a tab-separated file
 df_classification.to_csv(output_file_path, sep='\t', index=False)
