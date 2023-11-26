@@ -81,14 +81,15 @@ for gene in df_byFGN['Gene'].unique():
     for idx, row in gene_data.iterrows():
         # If the position is already in the dictionary, append the amino acid(s)
         position = row['Position']
+        substitution = row['Substitution']
 
-        long_aas = long_substitution(row['Substitution'])
+        long_aas = long_substitution(substitution)
         if position in substitutions_long:
             substitutions_long[position] += long_aas
         else:
             substitutions_long[position] = long_aas
 
-        short_aas = short_substitution(row['Substitution'])
+        short_aas = short_substitution(substitution)
         if position in substitutions_short:
             substitutions_short[position] += short_aas
         else:
@@ -113,25 +114,31 @@ for gene in df_byFGN['Gene'].unique():
     # Check for each substitution in the species of interest
     for record in alignment:
         if record.id in mammal_spp:
-            for position in gene_data['Position'].unique():
-                # Default classification
-                life_classification = None
-                lq = None
-
+            for position in gene_data['Position'].tolist():
+                
                 # Check if the adjusted position is within the sequence range
                 if position >= 0 and position < len(record.seq):
-
+                    
+                    # Default classification
+                    life_classification = None
+                    lq = None
+                    sub = None
+                    lab = None
                     # Check long substitutions
                     if position in substitutions_long and record.seq[position] in substitutions_long[position]:
-                        print(f"CAAS {position} {df_byFGN.loc[df_byFGN['Position'] == position, 'Substitution'].values[0]} in {gene}, {traits.loc[traits['TOGA_ID'] == record.id, 'SPECIES'].values[0]} has long-life AA")
+                        print(f"CAAS {position} {gene_data.loc[gene_data['Position'] == position, 'Substitution'].values[0]} in {gene}, {traits.loc[traits['TOGA_ID'] == record.id, 'SPECIES'].values[0]} has long-life AA {record.seq[position]}")
                         life_classification = 'Long'
                         lq = traits.loc[traits['TOGA_ID'] == record.id, 'LQ'].values[0]
+                        sub = gene_data.loc[gene_data['Position'] == position, 'Substitution'].values[0]
+                        lab = traits.loc[traits['TOGA_ID'] == record.id, 'label'].values[0]
 
                     # Check short substitutions
                     if position in substitutions_short and record.seq[position] in substitutions_short[position]:
-                        print(f"CAAS {position} {df_byFGN.loc[df_byFGN['Position'] == position, 'Substitution'].values[0]} in {gene}, {traits.loc[traits['TOGA_ID'] == record.id, 'SPECIES'].values[0]} has short-life AA")
+                        print(f"CAAS {position} {gene_data.loc[gene_data['Position'] == position, 'Substitution'].values[0]} in {gene}, {traits.loc[traits['TOGA_ID'] == record.id, 'SPECIES'].values[0]} has short-life AA {record.seq[position]}")
                         life_classification = 'Short'
                         lq = traits.loc[traits['TOGA_ID'] == record.id, 'LQ'].values[0]
+                        sub = gene_data.loc[gene_data['Position'] == position, 'Substitution'].values[0]
+                        lab = traits.loc[traits['TOGA_ID'] == record.id, 'label'].values[0]
 
                     # Ensure we only add records where a classification was made
                     if life_classification:
@@ -139,8 +146,8 @@ for gene in df_byFGN['Gene'].unique():
                         species_classification_data.append({
                             'Gene': gene,
                             'Position': position,
-                            'Substitution': row['Substitution'],
-                            'label': traits.loc[traits['TOGA_ID'] == record.id, 'label'].values[0],
+                            'Substitution': sub, 
+                            'label': lab,
                             'type_LQ': life_classification,
                             'LQ': lq
                             })
