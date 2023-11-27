@@ -30,7 +30,10 @@ traitfile_path = os.path.join(expanded_outDir, "primates_traits.csv")
 
 # Read the dataframe into a pandas DataFrame
 df_byFGN = pd.read_csv(caasfile_path, sep="\t")
+
 traits = pd.read_csv(traitfile_path)
+# Remove rows where 'LQ' column has NaN or missing values
+traits = traits.dropna(subset=['LQ'])
 
 # Function to process substitutions with multiple amino acids
 def long_substitution(substitution):
@@ -117,13 +120,13 @@ for gene in df_byFGN['Gene'].unique():
 
                 # Check long substitutions
                 if position in substitutions_long and record.seq[position] in substitutions_long[position]:
-                    print(f"CAAS {position} {df_byFGN.loc[df_byFGN['Position'] == position, 'Substitution'].values[0]} in {gene}, {record.id} has long-life AA")
+                    print(f"CAAS {position} {gene_data.loc[gene_data['Position'] == position, 'Substitution'].values[0]} in {gene}, {record.id} has long-life AA")
                     life_classification = 'Long'
                     lq = traits.loc[traits['label'] == record.id, 'LQ'].values[0]
 
                 # Check short substitutions
                 if position in substitutions_short and record.seq[position] in substitutions_short[position]:
-                    print(f"CAAS {position} {df_byFGN.loc[df_byFGN['Position'] == position, 'Substitution'].values[0]} in {gene}, {record.id} has short-life AA")
+                    print(f"CAAS {position} {gene_data.loc[gene_data['Position'] == position, 'Substitution'].values[0]} in {gene}, {record.id} has short-life AA")
                     life_classification = 'Short'
                     lq = traits.loc[traits['label'] == record.id, 'LQ'].values[0]
 
@@ -133,7 +136,7 @@ for gene in df_byFGN['Gene'].unique():
                     species_classification_data.append({
                         'Gene': gene,
                         'Position': position,
-                        'Substitution': row['Substitution'],
+                        'Substitution': gene_data.loc[gene_data['Position'] == position, 'Substitution'].values[0],
                         'label': record.id,
                         'type_LQ': life_classification,
                         'LQ': lq
