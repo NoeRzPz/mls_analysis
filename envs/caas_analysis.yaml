@@ -1,0 +1,53 @@
+name: tfm_r
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - r-tidyverse
+  - r-ggpubr
+  - plotly
+  - r-factominer
+  - r-corrplot
+  - ca-certificates
+  - openssl
+  - r-factoextra
+  - r-ggally
+  - r-phytools
+  - r-gtsummary
+  - r-kableextra
+  - bioconductor-annotationdbi
+  - bioconductor-org.hs.eg.db
+  - r-msigdbr
+  - r-picante
+  - r-taxize
+  - treecluster
+  - r-castor
+  - r-ggimage
+  - r-rsvg
+  - biopython
+  - r-flextable
+  - r-magick
+  - r-pheatmap
+  - r-seqinr
+  - pandas
+  - r-venndiagram
+  - r-ggmsa
+  - r-gplots
+  - r-upsetr
+  - bioconductor-reactomepa
+  - r-geiger
+  - r-ggridges
+  - gzip
+  - bioservices
+  - bioconductor-dose=3.28
+  - certifi
+  - r-base=4.3.2
+  - r-complexupset
+  - bioconductor-biomart
+  - bioconductor-txdb.hsapiens.ucsc.hg38.knowngene
+  - plotly-orca
+  - orca
+  - r-reticulate
+  - python-kaleido
+prefix: /home/vant/mambaforge/envs/tfm_r

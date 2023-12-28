@@ -1,0 +1,33 @@
+name: rercon_caas
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - r-ape
+  - r-geiger
+  - r-phangorn
+  - r-phytools
+  - r-mvtnorm
+  - r-devtools
+  - biopython
+  - scipy
+  - numpy
+  - dendropy
+  - ca-certificates
+  - openssl
+  - r-nloptr
+  - r-lme4
+  - r-pbkrtest
+  - r-jomo
+  - r-car
+  - r-mice
+  - fsa
+  - r-tidyverse
+  - r-ggrepel
+  - bioconductor-org.hs.eg.db
+  - bioconductor-clusterprofiler
+  - bioconductor-dose
+  - bioconductor-reactomepa
+  - r-msigdbr
+prefix: /home/vant/mambaforge/envs/rercon_caas
