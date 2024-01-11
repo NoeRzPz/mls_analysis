@@ -4,6 +4,7 @@ rm(list = ls())
 # Loading packages
 library(readr)
 library(tidyverse)
+library(RColorBrewer)
 library(RERconverge)
 library(ape)
 library(phytools)
@@ -41,8 +42,32 @@ dotTree(sub_tree, primates_lq,length = 10,ftype = "i")
 # Another one to display the trait
 setdiff(names(primates_lq), sub_tree$tip.label)
 primates_LQ <- primates_lq[sub_tree$tip.label]
+
+
+# Define a color palette function for a single color with varying intensities
+# Adjust the number of colors (n) to control intensity levels
+palette <- brewer.pal(n = 9, name = "Blues")
+
+# Create a continuous palette with colorRampPalette
+color_palette <- colorRampPalette(palette)
+colors <- color_palette(100)
+
+# Create the contMap object
 obj <- contMap(sub_tree, primates_LQ, plot = FALSE)
-plot(obj,lwd = 7,xlim = c(-0.2,3.6))
+obj <- setMap(obj, colors = colors)
+
+png(filename = file.path(resultsDir,"/descriptive/LQ_phylogeny.png"),  width = 20, height = 16, units = "cm", res = 300)
+
+#plot(obj, lwd = 3, xlim = c(-0.2,3.6))
+plot(obj,legend = FALSE, lwd = 4, ylim = c(1-0.09*(Ntip(obj$tree)-1), Ntip(obj$tree)), mar = c(5.1,0.4,0.4,0.4))
+add.color.bar(0.5,obj$cols,title = "LQ Tree Distribution",
+              lims = obj$lims, digits = 3, prompt = FALSE, x = 0,
+              y = 1-0.08*(Ntip(obj$tree)-1), lwd = 4, fsize = 1,subtitle = "")
+# add  x-axis
+axis(1)
+title(xlab = "Time from the root")
+
+dev.off()
 
 # Calculating RERs and plot results to check for heteroscedasticity correction
 # Create and save plots as PNG

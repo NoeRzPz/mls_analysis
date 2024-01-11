@@ -916,38 +916,119 @@ ggplot(kk_data[1:6,], aes(x = reorder(Description, ER), y = ER, fill = -p.adjust
   theme_classic() +
   theme(axis.text = element_text(size = 11))
 
+# With custom gmt
 ageannots <- read.gmt("data/agein.Hs.symbols.gmt")
 kk <- enricher(unique(ann$SYMBOL),
                pAdjustMethod = "BH", 
                universe      = unique(background_ann$SYMBOL),
                minGSSize     = 10,
-               maxGSSize     = 500,
+               maxGSSize     = 4000,
                pvalueCutoff  = 1,
                qvalueCutoff  = 0.05,
                TERM2GENE = ageannots)
 dim(kk)
-kk_sign <- as.data.frame(kk)
+age_sign <- as.data.frame(kk)
+
 # Convert GeneRatio and BgRatio to numeric and calculate Enrichment Ratio
-kk_sign <- kk_sign %>%
+age_sign <- age_sign %>%
   separate(GeneRatio, into = c("GeneNum", "GeneDenom"), sep = "/") %>%
   separate(BgRatio, into = c("BgNum", "BgDenom"), sep = "/") %>%
   mutate(across(c(GeneNum, GeneDenom, BgNum, BgDenom), as.numeric)) %>%
   mutate(ER = (GeneNum / GeneDenom) / (BgNum / BgDenom)) %>%
-  select(ID,Description, ER,p.adjust)
+  select(Description, ER,p.adjust)
 
-# Convert GeneRatio and BgRatio to numeric and calculate Enrichment Ratio
-kk_data <- hpo_results@result %>%
-  separate(GeneRatio, into = c("GeneNum", "GeneDenom"), sep = "/") %>%
-  separate(BgRatio, into = c("BgNum", "BgDenom"), sep = "/") %>%
-  mutate(across(c(GeneNum, GeneDenom, BgNum, BgDenom), as.numeric)) %>%
-  mutate(ER = (GeneNum / GeneDenom) / (BgNum / BgDenom)) 
+write.table(kk_sign, file.path(resultsDir,"/functional/ORA_results/aging_cebi_atel.txt"), sep = "\t", row.names = FALSE, quote = FALSE, col.names = TRUE)
+write.table(kk_sign, file.path(resultsDir,"/functional/ORA_results/aging_cebi_lemu.txt"), sep = "\t", row.names = FALSE, quote = FALSE, col.names = TRUE)
+write.table(kk_sign, file.path(resultsDir,"/functional/ORA_results/aging_lemu_atel.txt"), sep = "\t", row.names = FALSE, quote = FALSE, col.names = TRUE)
+write.table(kk_sign, file.path(resultsDir,"/functional/ORA_results/aging_cerco_atel.txt"), sep = "\t", row.names = FALSE, quote = FALSE, col.names = TRUE)
+write.table(kk_sign, file.path(resultsDir,"/functional/ORA_results/aging_cerco_cebi.txt"), sep = "\t", row.names = FALSE, quote = FALSE, col.names = TRUE)
+write.table(kk_sign, file.path(resultsDir,"/functional/ORA_results/aging_cerco_lemu.txt"), sep = "\t", row.names = FALSE, quote = FALSE, col.names = TRUE)
 
-# plot no significant results
-ggplot(kk_data[1:5,], aes(x = reorder(Description, ER), y = ER, fill = -p.adjust)) +
+
+# plot  significant results
+agp <- ggplot(age_sign, aes(x = reorder(Description, ER), y = ER, fill = -p.adjust)) +
   geom_bar(stat = "identity") +
   coord_flip() +
   scale_fill_continuous(low = "blue", high = "red") +
   labs(x = "", y = "Enrichment Ratio", fill = "FDR") +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "black") + 
   theme_classic() +
   theme(axis.text = element_text(size = 11))
+ggsave(plot = agp, filename = file.path(resultsDir,paste0("functional/ORA_results/cebi_lemuERbarplot_aging.png")), dpi = 300, units = "in",width = 6, height = 6)
+ggsave(plot = agp, filename = file.path(resultsDir,paste0("functional/ORA_results/lemu_atelERbarplot_aging.png")), dpi = 300, units = "in",width = 6, height = 6)
+ggsave(plot = agp, filename = file.path(resultsDir,paste0("functional/ORA_results/cerco_cebiERbarplot_aging.png")), dpi = 300, units = "in",width = 6, height = 6)
 
+#Perform Hypergeometric Test for underrepresented gene sets in your custom collection
+customGeneSets <- ageannots
+customGeneSetsList <- customGeneSets %>%
+  group_by(term) %>%
+  summarise(genes = list(gene)) %>%
+  deframe()
+universeGenes <- unique(background_ann$SYMBOL)
+geneSet <- unique(ann$SYMBOL)
+
+terms <- names(customGeneSetsList)
+underrepResults <- vector("numeric", length(terms))
+names(underrepResults) <- terms
+enrichmentRatios <- c()
+finalResults <- data.frame()
+
+for (term in terms) {
+  customgeneSet <- customGeneSetsList[[term]]
+  
+  # Count of genes in the set and in the universe
+  setCount <- length(geneSet)
+  universeCount <- length(universeGenes)
+  
+  # Count of significant genes in the set and in the universe
+  InSet <- length(intersect(geneSet, customgeneSet))
+  InUniverse <- length(intersect(universeGenes, customgeneSet))
+  
+  # Calculate Enrichment Ratio (ER)
+  enrichmentRatios[term] <- (InSet / setCount) / (InUniverse / universeCount)
+  
+  # Count of non-significant genes in the set and in the universe
+  nonInSet <- setCount - InSet
+  nonInUniverse <- universeCount - InUniverse - (InUniverse - InSet)
+  
+  # Fisher's Exact Test
+  matrix <- matrix(c(InSet, nonInSet,
+                     InUniverse, nonInUniverse), nrow = 2)
+  test <- fisher.test(matrix, alternative = "less")
+  underrepResults[term] <- test$p.value
+}
+
+p.adjusted <- p.adjust(underrepResults, method = "BH")
+
+# Combine results into a data frame
+finalResults <- data.frame(
+  Description = names(underrepResults),
+  ER = enrichmentRatios,
+  PValue = underrepResults,
+  p.adjust = p.adjusted )
+
+finalResults <- finalResults %>%
+  filter(p.adjust <= 0.05) %>%
+  select(Description, ER,p.adjust)
+finalResults
+write.table(finalResults, file.path(resultsDir,"/functional/ORA_results/underaging_cebi_atel.tsv"), sep = "\t", row.names = FALSE, quote = FALSE, col.names = TRUE)
+write.table(finalResults, file.path(resultsDir,"/functional/ORA_results/underaging_cebi_lemu.tsv"), sep = "\t", row.names = FALSE, quote = FALSE, col.names = TRUE)
+write.table(finalResults, file.path(resultsDir,"/functional/ORA_results/underaging_lemu_atel.tsv"), sep = "\t", row.names = FALSE, quote = FALSE, col.names = TRUE)
+write.table(finalResults, file.path(resultsDir,"/functional/ORA_results/underaging_cerco_atel.tsv"), sep = "\t", row.names = FALSE, quote = FALSE, col.names = TRUE)
+write.table(finalResults, file.path(resultsDir,"/functional/ORA_results/underaging_cerco_cebi.tsv"), sep = "\t", row.names = FALSE, quote = FALSE, col.names = TRUE)
+write.table(finalResults, file.path(resultsDir,"/functional/ORA_results/underaging_cerco_lemu.tsv"), sep = "\t", row.names = FALSE, quote = FALSE, col.names = TRUE)
+write.table(finalResults, file.path(resultsDir,"/functional/ORA_results/underaging_70shared_all2fam.tsv"), sep = "\t", row.names = FALSE, quote = FALSE, col.names = TRUE)
+
+# Merge over/under-represented results
+both_sign <- rbind(age_sign, finalResults)
+
+# plot  significant results
+agp <- ggplot(both_sign, aes(x = reorder(Description, ER), y = ER, fill = -p.adjust)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  scale_fill_continuous(low = "blue", high = "red") +
+  labs(x = "", y = "Enrichment Ratio", fill = "FDR") +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "black") + 
+  theme_classic() +
+  theme(axis.text = element_text(size = 11))
+ggsave(plot = agp, filename = file.path(resultsDir,paste0("functional/ORA_results/cebi_lemuERboth_aging.png")), dpi = 300, units = "in",width = 6, height = 6)

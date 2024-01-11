@@ -245,12 +245,20 @@ family_counts <- data.frame(table(primates_traits$Family)) %>%
   # Order it by abundance
   arrange(desc(Freq))
 
+# save max freq
+max_freq <- max(family_counts$Freq)
+
 # Create the ggplot barplot
-ggplot(family_counts, aes(x = reorder(Var1, Freq), y = Freq)) +
+ggplot(family_counts, aes(x = reorder(Var1, Freq), y = Freq, fill = Var1)) +
   geom_bar(stat = "identity") +
   coord_flip() +  # Makes the bars horizontal
+  scale_y_continuous(breaks = seq(0, max_freq, by = 1)) +  # Set y-axis breaks
   labs(title = "Primate Families by Abundance", x = "Family", y = "Count") +
-  theme_classic()
+  theme_classic() +
+  theme(legend.position = "none")
+
+# Save the plot to a file
+ggsave(file.path(resultsDir,"descriptive/primate_families_barplot.png"), width = 10, height = 8, dpi = 300)
 ```
 
 Plot phylogeny

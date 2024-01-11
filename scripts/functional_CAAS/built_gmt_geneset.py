@@ -12,7 +12,7 @@ go_terms = {
     "Genomic Instability": [("DNA_repair", "GO:0006281"), ("Nuclear_lamina", "GO:0005652")],
     "Telomere Attrition": [("Telomere_maintenance", "GO:0000723"), ("Telomere_capping", "GO:0016233")],
     "Epigenetic Alterations": [("Histone modification", "GO:0016570"), ("DNA methylation", "GO:0006306"), ("Chromatine remodeling", "GO:0006338")],
-    "Loss of Proteostasis ": [("Chaperone-mediated protein folding", "GO:0061077"), ("Autophagy", "GO:0006914"), ("Ubiquitin-proteasome system", "GO:0043161")],
+    "Loss of Proteostasis ": [("Chaperone-mediated protein folding", "GO:0061077"), ("Autophagy", "GO:0006914"), ("proteasome-mediated ubiquitin-dependent protein catabolic process", "GO:0043161")],
     "Deregulated Nutrient Sensing": [("Insulin receptor signaling Pathway", "GO:0008286"), ("TOR signaling", "GO:0031929")],
     "Mitochondrial Dysfunction": [("Response to ROS ", "GO:0000302"), ("Mitochondrial genome maintenance", "GO:0000002")],
     "Cellular senescence": [("Cellular senescence", "GO:0090398")],
@@ -20,11 +20,8 @@ go_terms = {
     "Altered Intracellular Communication": [("Inflammatory response", "GO:0006954"), ("Inflammasome complex", "GO:0061702")]
 }
 
-#curl -s http://www.ebi.ac.uk/QuickGO/GAnnotation?tax=9606&relType=IP=&goid=GO:0003015&format=tsv
 
-#If you require a list of the proteins used in these annotations, you can use the following URL;
-
-#curl -s http://www.ebi.ac.uk/QuickGO/GAnnotation?tax=9606&relType=IP=&goid=GO:0003015&format=proteinList
+# retrieve a list of the proteins used in these annotations
 
 def get_genes_for_go_term(go_term):
     quickgo = QuickGO()

@@ -320,8 +320,6 @@ genes_byFGN <- unique(df_byFGN$Gene)
 # Export gene symbols from this subset
 write.table(genes_byFGN, file.path(resultsDir,"/functional/genes_byFGN.tab"), sep = "\t", row.names = FALSE, quote = FALSE, col.names = FALSE)
 
-
-
 # Obtain desired types of IDs from the RefSeq IDs from significant genes
 ann <- bitr(genes_byFGN, fromType = "SYMBOL", toType =  c("SYMBOL","ENTREZID"), OrgDb = org.Hs.eg.db)
 
@@ -638,6 +636,70 @@ ggplot(kk_data[1:5,], aes(x = reorder(Description, ER), y = ER, fill = -p.adjust
   labs(x = "", y = "Enrichment Ratio", fill = "FDR") +
   theme_classic() +
   theme(axis.text = element_text(size = 11))
+
+ageannots <- read.gmt("data/agein.Hs.symbols.gmt")
+kk <- enricher(unique(ann$SYMBOL),
+               pAdjustMethod = "BH", 
+               universe      = unique(background_ann$SYMBOL),
+               minGSSize     = 10,
+               maxGSSize     = 4000,
+               pvalueCutoff  = 1,
+               qvalueCutoff  = 0.05,
+               TERM2GENE = ageannots)
+dim(kk)
+kk_sign <- as.data.frame(kk)
+
+#Perform Hypergeometric Test for underrepresented gene sets in your custom collection
+customGeneSets <- ageannots
+customGeneSetsList <- customGeneSets %>%
+  group_by(term) %>%
+  summarise(genes = list(gene)) %>%
+  deframe()
+geneSet <- unique(ann$SYMBOL)
+universeGenes <- unique(background_ann$SYMBOL)
+
+terms <- names(customGeneSetsList)
+underrepResults <- vector("numeric", length(terms))
+names(underrepResults) <- terms
+enrichmentRatios <- c()
+finalResults <- data.frame()
+
+for (term in terms) {
+  customgeneSet <- customGeneSetsList[[term]]
+  
+  # Count of genes in the set and in the universe
+  setCount <- length(geneSet)
+  universeCount <- length(universeGenes)
+  
+  # Count of significant genes in the set and in the universe
+  InSet <- length(intersect(geneSet, customgeneSet))
+  InUniverse <- length(intersect(universeGenes, customgeneSet))
+  
+  # Calculate Enrichment Ratio (ER)
+  enrichmentRatios[term] <- (InSet / setCount) / (InUniverse / universeCount)
+  
+  # Count of non-significant genes in the set and in the universe
+  nonInSet <- setCount - InSet
+  nonInUniverse <- universeCount - InUniverse - (InUniverse - InSet)
+  
+  # Fisher's Exact Test
+  matrix <- matrix(c(InSet, nonInSet,
+                     InUniverse, nonInUniverse), 
+                   nrow = 2)
+  test <- fisher.test(matrix, alternative = "less")
+  underrepResults[term] <- test$p.value
+}
+p.adjusted <- p.adjust(underrepResults, method = "BH")
+# Combine results into a data frame
+finalResults <- data.frame(
+  Term = terms,
+  ER = enrichmentRatios,
+  PValue = underrepResults,
+  p.adj = p.adjusted )
+
+finalResults <- finalResults %>%
+  filter(p.adj <= 0.05)
+finalResults
 
 
 fam4.rank <- df_byFGN %>%
