@@ -62,27 +62,27 @@ lists <- list(Cebidae.Atelidae = genes_cebi_atel, Cebidae.Lemuridae = genes_cebi
 # Convert to binary membership data
 upset_data <- fromList(lists)
 
-# Create a named vector of colors for the sets with RColorBrewer 
-set_colors <- brewer.pal(7, "Set3")
-names(set_colors) <- names(lists)
-
-# Calculate gene overlap between family contrasts
-# Generate the UpSet plot with customized colors
-u7 <- upset(upset_data, sets = names(lists), sets.bar.color = set_colors, nintersects = 80)
-
-# Open a PNG device
-png(filename = file.path(resultsDir, "/descriptive/genes_upsetplot_7contrasts.png"), width = 13, height = 7, units = 'in', res = 500)
-# Draw the plot on the open device
-print(u7)
-# Turn off the device to close and save the file
-dev.off()
-
 # Create the upset plot with ComplexUpset
 u7 <- ComplexUpset::upset(upset_data, intersect = names(lists), width_ratio = 0.1, n_intersections = 80,name = '',
                           base_annotations = list('Intersection size' = (
                             ComplexUpset::intersection_size(
                               text = list(vjust = -0.1,color = 'black',hjust = -0.1,angle = 45, size = 3)) +
                               theme_classic() + theme( axis.title.x = element_blank(),axis.text.x = element_blank()))))
+
+# Barplot to simplify info
+# Calculate the number of genes found in each number of contrasts
+gene_counts <- table(rowSums(upset_data))
+
+# Create the data frame for the barplot
+gene_data <- data.frame(
+  name = as.character(1:7),
+  value = as.numeric(gene_counts))
+
+# Barplot
+bg <- ggplot(gene_data, aes(x = name, y = value)) + 
+  geom_bar(fill = "#66B266", stat = "identity") +
+  labs(x = "Number of Contrasts", y = "Gene Number") +
+  theme_classic() 
 
 
 # Create a list to know total CAAS discovered with all contrasts
@@ -131,31 +131,42 @@ lists <- list(all4fam = caas_fam4$caas, Cebidae.Atelidae = caas_cebi_atel$caas, 
 # Convert to binary membership data
 upset_data <- fromList(lists)
 
-# Create a named vector of colors for the sets with RColorBrewer 
-set_colors <- brewer.pal(7, "Set3")
-names(set_colors) <- names(lists)
-
-# Generate the UpSet plot with customized colors
-c7 <- upset(upset_data, sets = names(lists), sets.bar.color = set_colors)
-
-# Open a PNG device
-png(filename = file.path(resultsDir, "/descriptive/caas_upsetplot_7contrasts.png"), width = 13, height = 7, units = 'in', res = 500)
-# Draw the plot on the open device
-print(c7)
-# Turn off the device to close and save the file
-dev.off()
-
 # Create the upset plot with ComplexUpset
 c7 <- ComplexUpset::upset(upset_data, intersect = names(lists), width_ratio = 0.2, n_intersections = 80,name = '',
                           base_annotations = list('Intersection size' = (
                             ComplexUpset::intersection_size(
                               text = list(vjust = -0.1,color = 'black',hjust = -0.1,angle = 45)) +
                               theme_classic() + theme( axis.title.x = element_blank(),axis.text.x = element_blank()))))
+
 # Use Reduce to find the intersection of all sets
 shared_elements <- Reduce(intersect, lists)
 
 # Print out the shared elements
 shared_elements
+
+# Barplot to simplify info
+# Calculate the number of genes found in each number of contrasts
+caas_counts <- table(rowSums(upset_data))
+
+# Create the data frame for the barplot
+caas_data <- data.frame(
+  name = as.character(1:4),
+  value = as.numeric(caas_counts))
+
+# Barplot
+bc <- ggplot(caas_data, aes(x = name, y = value)) + 
+  geom_bar(fill = "#FFB266", stat = "identity") +
+  labs(x = "Number of Contrasts", y = "CAAS Number") +
+  theme_classic() 
+
+combined_barplot <- bc + bg  + 
+  plot_annotation(tag_levels = 'A', face = "bold")
+# Apply bold tags using theme on the combined plot
+combined_barplot <- combined_barplot & 
+  theme(plot.tag = element_text(face = "bold"))
+
+# Save to a file
+ggsave(combined_barplot, filename = file.path(resultsDir,"/descriptive/barplots_fig2.png"),  dpi = 300, width = 6, height = 4)
 
 # If c7 and u7 are lists of ggplot objects, use wrap_plots to combine each list into a single plot
 plot_c7 <- plot_grid(c7, ncol = 1) 
@@ -164,7 +175,7 @@ plot_u7 <- plot_grid(u7, ncol = 1)
 # Combine the two annotated plot objects
 combined_plot <- plot_c7 / plot_u7  + 
   plot_annotation(tag_levels = 'A')
-combined_plot
+
 # Save to a file
 ggsave(combined_plot, filename = file.path(resultsDir,"/descriptive/ggplot_upsetplots_7contrasts.png"),  dpi = 600)
 
