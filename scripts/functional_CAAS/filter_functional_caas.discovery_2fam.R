@@ -917,8 +917,8 @@ ggplot(kk_data[1:6,], aes(x = reorder(Description, ER), y = ER, fill = -p.adjust
   theme(axis.text = element_text(size = 11))
 
 # With custom gmt
-ageannots <- read.gmt("data/agein.Hs.symbols.gmt")
-kk <- enricher(unique(ann$SYMBOL),
+ageannots <- read.gmt("data/aging.Hs.symbols.gmt")
+age <- enricher(unique(ann$SYMBOL),
                pAdjustMethod = "BH", 
                universe      = unique(background_ann$SYMBOL),
                minGSSize     = 10,
@@ -926,7 +926,7 @@ kk <- enricher(unique(ann$SYMBOL),
                pvalueCutoff  = 1,
                qvalueCutoff  = 0.05,
                TERM2GENE = ageannots)
-dim(kk)
+dim(age)
 age_sign <- as.data.frame(kk)
 
 # Convert GeneRatio and BgRatio to numeric and calculate Enrichment Ratio
@@ -937,12 +937,12 @@ age_sign <- age_sign %>%
   mutate(ER = (GeneNum / GeneDenom) / (BgNum / BgDenom)) %>%
   select(Description, ER,p.adjust)
 
-write.table(kk_sign, file.path(resultsDir,"/functional/ORA_results/aging_cebi_atel.txt"), sep = "\t", row.names = FALSE, quote = FALSE, col.names = TRUE)
-write.table(kk_sign, file.path(resultsDir,"/functional/ORA_results/aging_cebi_lemu.txt"), sep = "\t", row.names = FALSE, quote = FALSE, col.names = TRUE)
-write.table(kk_sign, file.path(resultsDir,"/functional/ORA_results/aging_lemu_atel.txt"), sep = "\t", row.names = FALSE, quote = FALSE, col.names = TRUE)
-write.table(kk_sign, file.path(resultsDir,"/functional/ORA_results/aging_cerco_atel.txt"), sep = "\t", row.names = FALSE, quote = FALSE, col.names = TRUE)
-write.table(kk_sign, file.path(resultsDir,"/functional/ORA_results/aging_cerco_cebi.txt"), sep = "\t", row.names = FALSE, quote = FALSE, col.names = TRUE)
-write.table(kk_sign, file.path(resultsDir,"/functional/ORA_results/aging_cerco_lemu.txt"), sep = "\t", row.names = FALSE, quote = FALSE, col.names = TRUE)
+write.table(age_sign, file.path(resultsDir,"/functional/ORA_results/aging_cebi_atel.txt"), sep = "\t", row.names = FALSE, quote = FALSE, col.names = TRUE)
+write.table(age_sign, file.path(resultsDir,"/functional/ORA_results/aging_cebi_lemu.txt"), sep = "\t", row.names = FALSE, quote = FALSE, col.names = TRUE)
+write.table(age_sign, file.path(resultsDir,"/functional/ORA_results/aging_lemu_atel.txt"), sep = "\t", row.names = FALSE, quote = FALSE, col.names = TRUE)
+write.table(age_sign, file.path(resultsDir,"/functional/ORA_results/aging_cerco_atel.txt"), sep = "\t", row.names = FALSE, quote = FALSE, col.names = TRUE)
+write.table(age_sign, file.path(resultsDir,"/functional/ORA_results/aging_cerco_cebi.txt"), sep = "\t", row.names = FALSE, quote = FALSE, col.names = TRUE)
+write.table(age_sign, file.path(resultsDir,"/functional/ORA_results/aging_cerco_lemu.txt"), sep = "\t", row.names = FALSE, quote = FALSE, col.names = TRUE)
 
 
 # plot  significant results
@@ -1011,6 +1011,7 @@ finalResults <- finalResults %>%
   filter(p.adjust <= 0.05) %>%
   select(Description, ER,p.adjust)
 finalResults
+
 write.table(finalResults, file.path(resultsDir,"/functional/ORA_results/underaging_cebi_atel.tsv"), sep = "\t", row.names = FALSE, quote = FALSE, col.names = TRUE)
 write.table(finalResults, file.path(resultsDir,"/functional/ORA_results/underaging_cebi_lemu.tsv"), sep = "\t", row.names = FALSE, quote = FALSE, col.names = TRUE)
 write.table(finalResults, file.path(resultsDir,"/functional/ORA_results/underaging_lemu_atel.tsv"), sep = "\t", row.names = FALSE, quote = FALSE, col.names = TRUE)
