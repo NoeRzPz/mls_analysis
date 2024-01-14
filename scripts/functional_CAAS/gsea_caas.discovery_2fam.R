@@ -386,13 +386,14 @@ p1 <- ggplot(mfsign[1:7,], aes(x = reorder(ShortDescription, NES), y = NES, fill
   scale_fill_continuous(low = "#377EB8", high = "#dd6765") +
   labs(x = "", y = "Normalized Enrichment Score", fill = "FDR") +
   theme_classic() +
-  theme(axis.text = element_text(size = 11))
+  theme(axis.text = element_text(size = 13))
 ggsave(plot = p1, filename = file.path(resultsDir,"functional/GSEA_results/GOMF_cebi_ERbarplot.png"), dpi = 300, units = "in",width = 8, height = 8)
 
 # for spoting upregulated or downregulated terms (think more usefuf for expression data)
 p <- clusterProfiler::ridgeplot(mfgse, showCategory = 7,core_enrichment = TRUE, label_format = 30)
 ggsave(plot = p, filename = file.path(resultsDir,"functional/GSEA_results/GOMF_cebi_ridgeplot.png"), dpi = 300,units = "in",width = 8, height = 8)
-p2 <- gseaplot(mfgse, geneSetID = 1, title = mfgse$Description[1])
+
+p2 <- gseaplot(mfgse, geneSetID = 1, title = str_wrap(mfgse$Description[1], width = 30))
 ggsave(plot = p2, filename = file.path(resultsDir,"functional/GSEA_results/GOMF_cebi_enrichmentplot.png"), dpi = 300,units = "in",width = 8, height = 8)
 p3 <- dotplot(mfgse, showCategory = 7, font.size = 9)
 ggsave(plot = p3, filename = file.path(resultsDir,"functional/GSEA_results/GOMF_cebi_dotplot.png"), dpi = 300, units = "in",width = 6, height = 6)
@@ -402,26 +403,24 @@ p4 <- emapplot(ekk, showCategory = 7)
 ggsave(plot = p4, filename = file.path(resultsDir,"functional/GSEA_results/GOMF_cebi_emapplot.png"), dpi = 300,units = "in",width = 8, height = 8)
 
 # Cenet plot of 10 most significant terms
-p5 <- cnetplot(mfgse, showCategory = 7, cex.params = list(category_label = 0.6), categorySize = "pvalue", foldChange = gene_list) + 
+p5m <- cnetplot(mfgse, showCategory = 7, cex.params = list(category_label = 0.8), categorySize = "pvalue", foldChange = gene_list) + 
   scale_color_gradient2(name = 'Rank score', low = 'lightgreen', high = 'darkgreen')
 ggsave(plot = p5, filename = file.path(resultsDir,"functional/GSEA_results/GOMF_cebi_cnetplot.png"), dpi = 300, units = "in",width = 6, height = 6)
 
 # Prepare figure 8
-# Read the images
-image1 <- magick::image_read(file.path(resultsDir,"functional/GSEA_results/GOMF_cebi_ERbarplot.png"))
-image2 <- magick::image_read(file.path(resultsDir,"functional/GSEA_results/GOMF_cebi_enrichmentplot.png"))
-image3 <- magick::image_read(file.path(resultsDir,"functional/GSEA_results/GOMF_cebi_emapplot.png"))
 
-# Annotate each image with letters A, B, and C respectively
-image1 <- ggdraw() + draw_image(image1)
-image2 <- ggdraw() + draw_image(image2)
-image3 <- ggdraw() + draw_image(image3)
+# p2 is list of ggplot objects, use wrap_plots to combine each list into a single plot
+p2f <- plot_grid(wrap_plots(p2, ncol = 1))
 
-# Combine the annotated images
-combined_plot <- ((image1 | image2) / image3 ) + 
-  plot_annotation(tag_levels = 'A')
+top_row <- plot_grid(p1, p2f, labels = c("A", "B"), rel_widths = c(1.3,1), label_size = 18)
+# Create a bottom row with p4 centered
+bottom_row <- plot_grid(p4,  labels = c("C"), label_size = 18)
+
+# Combine the top and bottom rows into a single plot
+pf <- plot_grid(top_row, bottom_row, ncol = 1)
+
 # Save to a file
-ggsave(combined_plot, filename = file.path(resultsDir,"functional/GSEA_results/GOMFcebi_lemu_all.png"),  dpi = 300)
+ggsave(pf, filename = file.path(resultsDir,"functional/GSEA_results/GOMFcebi_lemu_all.png"),width = 13, height = 12, dpi = 300, scale = 1)
 
 
 set.seed(123)
@@ -518,13 +517,13 @@ p1 <- ggplot(kksign[1:10,], aes(x = reorder(ShortDescription, NES), y = NES, fil
   scale_fill_continuous(low = "#377EB8", high = "#dd6765") +
   labs(x = "", y = "Normalized Enrichment Score", fill = "FDR") +
   theme_classic() +
-  theme(axis.text = element_text(size = 11))
+  theme(axis.text = element_text(size = 14))
 ggsave(plot = p1, filename = file.path(resultsDir,"functional/GSEA_results/kegg_cebi_ERbarplot.png"), dpi = 300, units = "in",width = 8, height = 8)
 
 # for spoting upregulated or downregulated terms (think more usefuf for expression data)
 p <- clusterProfiler::ridgeplot(kk_gse, showCategory = 10,core_enrichment = TRUE, label_format = 30)
 ggsave(plot = p, filename = file.path(resultsDir,"functional/GSEA_results/kegg_cebi_ridgeplot.png"), dpi = 300,units = "in",width = 8, height = 8)
-p2 <- gseaplot(kk_gse, geneSetID = 1, title = kk_gse$Description[1])
+p2 <- gseaplot(kk_gse, geneSetID = 1, title = str_wrap(kk_gse$Description[1], width = 30))
 ggsave(plot = p2, filename = file.path(resultsDir,"functional/GSEA_results/kegg_cebi_enrichmentplot.png"), dpi = 300,units = "in",width = 9, height = 8)
 p3 <- dotplot(kk_gse, showCategory = 10, font.size = 9)
 ggsave(plot = p3, filename = file.path(resultsDir,"functional/GSEA_results/kegg_cebi_dotplot.png"), dpi = 300, units = "in",width = 6, height = 6)
@@ -534,7 +533,7 @@ p4 <- emapplot(ekk, showCategory = 14)
 ggsave(plot = p4, filename = file.path(resultsDir,"functional/GSEA_results/kegg_cebi_emapplot.png"), dpi = 300,units = "in",width = 8, height = 8)
 
 # Cenet plot of 10 most significant terms
-p5 <- cnetplot(kk_gse, showCategory = 5, cex.params = list(category_label = 0.6), categorySize = "pvalue", foldChange = gene_list) + scale_color_gradient2(name = 'Rank score', low = 'lightgreen', high = 'darkgreen')
+p5k <- cnetplot(kk_gse, showCategory = 5, cex.params = list(category_label = 0.8), categorySize = "pvalue", foldChange = gene_list) + scale_color_gradient2(name = 'Rank score', low = 'lightgreen', high = 'darkgreen')
 ggsave(plot = p5, filename = file.path(resultsDir,"functional/GSEA_results/kegg_cebi_cnetplot.png"), dpi = 300, units = "in",width = 6, height = 6)
 
 # # Split the 'core_enrichment' column into multiple rows
@@ -564,21 +563,18 @@ ggsave(plot = p5, filename = file.path(resultsDir,"functional/GSEA_results/kegg_
 #                     fold_change = shared_geneList)
 
 # Prepare figure 9
-# Read the images
-image1 <- magick::image_read(file.path(resultsDir,"functional/GSEA_results/kegg_cebi_ERbarplot.png"))
-image2 <- magick::image_read(file.path(resultsDir,"functional/GSEA_results/kegg_cebi_enrichmentplot.png"))
-image3 <- magick::image_read(file.path(resultsDir,"functional/GSEA_results/kegg_cebi_emapplot.png"))
 
-# Annotate each image with letters A, B, and C respectively
-image1 <- ggdraw() + draw_image(image1)
-image2 <- ggdraw() + draw_image(image2)
-image3 <- ggdraw() + draw_image(image3)
+# p2 is list of ggplot objects, use wrap_plots to combine each list into a single plot
+p2f <- plot_grid(wrap_plots(p2, ncol = 1))
 
-# Combine the annotated images
-combined_plot <- ((image1 | image2) / image3 ) + 
-  plot_annotation(tag_levels = 'A')
+top_row <- plot_grid(p1, p2f, labels = c("A", "B"), rel_widths = c(1.3,1), label_size = 18)
+# Create a bottom row with p4 centered
+bottom_row <- plot_grid(p4,  labels = c("C"), label_size = 18)
+# Combine the top and bottom rows into a single plot
+pf <- plot_grid(top_row, bottom_row, ncol = 1)
+
 # Save to a file
-ggsave(combined_plot, filename = file.path(resultsDir,"functional/GSEA_results/keggcebi_lemu_all.png"),  dpi = 400)
+ggsave(pf, filename = file.path(resultsDir,"functional/GSEA_results/keggcebi_lemu_all.png"), dpi = 300,scale = 1, width = 13, height = 12)
 
 set.seed(123)
 fgsea_react <- gsePathway(geneList = gene_list, 
@@ -610,7 +606,7 @@ p1 <- ggplot(reactsign[1:6,], aes(x = reorder(ShortDescription, NES), y = NES, f
   scale_fill_continuous(low = "#377EB8", high = "#dd6765") +
   labs(x = "", y = "Normalized Enrichment Score", fill = "FDR") +
   theme_classic() +
-  theme(axis.text = element_text(size = 11))
+  theme(axis.text = element_text(size = 13))
 ggsave(plot = p1, filename = file.path(resultsDir,"functional/GSEA_results/reactome_cebi_ERbarplot.png"), dpi = 300, units = "in",width = 8, height = 8)
 
 # for spoting upregulated or downregulated terms (think more usefuf for expression data)
@@ -626,26 +622,38 @@ p4 <- emapplot(ekk, showCategory = 6)
 ggsave(plot = p4, filename = file.path(resultsDir,"functional/GSEA_results/reactome_cebi_emapplot.png"), dpi = 300,units = "in",width = 8, height = 8)
 
 # Cenet plot of 10 most significant terms
-p5 <- cnetplot(fgsea_react, showCategory = 6, cex.params = list(category_label = 0.6), categorySize = "pvalue", foldChange = gene_list) + 
+p5r <- cnetplot(fgsea_react, showCategory = 6, cex.params = list(category_label = 0.8), categorySize = "pvalue", foldChange = gene_list) + 
   scale_color_gradient2(name = 'Rank score', low = 'lightgreen', high = 'darkgreen')
 ggsave(plot = p5, filename = file.path(resultsDir,"functional/GSEA_results/reactome_cebi_cnetplot.png"), dpi = 300, units = "in",width = 6, height = 6)
 
-# Prepare figure 10
-# Read the images
-image1 <- magick::image_read(file.path(resultsDir,"functional/GSEA_results/reactome_cebi_ERbarplot.png"))
-image2 <- magick::image_read(file.path(resultsDir,"functional/GSEA_results/reactome_cebi_enrichmentplot.png"))
-image3 <- magick::image_read(file.path(resultsDir,"functional/GSEA_results/reactome_cebi_emapplot.png"))
+# Prepare figure 10 
 
-# Annotate each image with letters A, B, and C respectively
-image1 <- ggdraw() + draw_image(image1)
-image2 <- ggdraw() + draw_image(image2)
-image3 <- ggdraw() + draw_image(image3)
+# p2 is list of ggplot objects, use wrap_plots to combine each list into a single plot
+p2f <- plot_grid(wrap_plots(p2, ncol = 1))
 
-# Combine the annotated images
-combined_plot <- ((image1 | image2) / image3 ) + 
-  plot_annotation(tag_levels = 'A')
+top_row <- plot_grid(p1, p2f, labels = c("A", "B"), rel_widths = c(1.3,1), label_size = 18)
+# Create a bottom row with p4 centered
+bottom_row <- plot_grid(p4,  labels = c("C"), label_size = 18)
+# Combine the top and bottom rows into a single plot
+pf <- plot_grid(top_row, bottom_row, ncol = 1)
+
 # Save to a file
-ggsave(combined_plot, filename = file.path(resultsDir,"functional/GSEA_results/reactome_cebi_lemu_all.png"),  dpi = 400)
+ggsave(pf, filename = file.path(resultsDir,"functional/GSEA_results/reactome_cebi_lemu_all.png"), dpi = 300, scale = 1, width = 13, height = 12)
+
+# Prepare figure 11
+# Combine directly from generated plots
+# combined_plot <- ((p5m | p5k) / p5r ) + 
+#   plot_annotation(tag_levels = 'A')
+
+top_row <- plot_grid(p5m, p5k, labels = c("A", "B"),  label_size = 18)
+# Create a bottom row with p4 centered
+bottom_row <- plot_grid(NULL,p5r, NULL, ncol = 3, labels = c("C"), label_size = 18, rel_widths = c(1,2,1))
+# Combine the top and bottom rows into a single plot
+pf <- plot_grid(top_row, bottom_row, ncol = 1)
+
+# Save to a file
+ggsave(pf, filename = file.path(resultsDir,"functional/GSEA_results/cnetplot_cebi_lemu_all.png"), dpi = 300, width = 12, height = 12)
+
 
 set.seed(123)
 do_gsea <- gseDO(geneList = gene_list, 
@@ -682,23 +690,6 @@ dgn_sign <- as.data.frame(dgn_gsea) %>%
   filter(qvalue <= 0.05)
 dim(dgn_sign)
 
-
-# Prepare figure 11
-# Read the images
-image1 <- magick::image_read(file.path(resultsDir,"functional/GSEA_results/GOMF_cebi_cnetplot.png"))
-image2 <- magick::image_read(file.path(resultsDir,"functional/GSEA_results/kegg_cebi_cnetplot.png"))
-image3 <- magick::image_read(file.path(resultsDir,"functional/GSEA_results/reactome_cebi_cnetplot.png"))
-
-# Annotate each image with letters A, B, and C respectively
-image1 <- ggdraw() + draw_image(image1)
-image2 <- ggdraw() + draw_image(image2)
-image3 <- ggdraw() + draw_image(image3)
-
-# Combine the annotated images
-combined_plot <- ((image1 | image2) / image3 ) + 
-  plot_annotation(tag_levels = 'A')
-# Save to a file
-ggsave(combined_plot, filename = file.path(resultsDir,"functional/GSEA_results/cnetplot_cebi_lemu_all.png"),  dpi = 500)
 
 set.seed(123)
 hpo_gsea <- gseHPO(geneList = gene_list,

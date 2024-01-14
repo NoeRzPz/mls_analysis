@@ -194,8 +194,9 @@ if (na_count > 0) {
 # Define GO terms to study
 category <- c("BP", "MF", "CC")
 
-# Initialize empty list (pensar si lo necesito, sino borrar)
+# Initialize empty list 
 egos <- list()
+
 
 for (i in category) {
   set.seed(123)  #Set random seed, so result doesn't change each time
@@ -269,11 +270,11 @@ for (i in 1:length(egos)) {
     
     # Create Emap plot of 20 most significant GO terms
     egop <- enrichplot::pairwise_termsim(egos[[i]][[1]])
-    p3 <- emapplot(egop, cex.params = list(category_label = 0.6), showCategory = 20)
+    p3 <- emapplot(egop, cex.params = list(category_label = 0.8), showCategory = 20)
     ggsave(plot = p3, filename = file.path(resultsDir,paste0("functional/ORA_results/cebi_lemuemapplot_GO_", names(egos)[i],".png")), dpi = 300, units = "in",width = 6, height = 6)
   
     # Cenet plot of 10 most significant BP GO terms
-    p4 <- cnetplot(egos[[i]][[1]], showCategory = 5, cex.params = list(category_label = 0.6))
+    p4 <- cnetplot(egos[[i]][[1]], showCategory = 7, cex.params = list(category_label = 0.8))
     ggsave(plot = p4, filename = file.path(resultsDir,paste0("functional/ORA_results/cebi_lemucnetplot_GO_", names(egos)[i],".png")), dpi = 300, units = "in",width = 6, height = 6)
   } else {
     # Plot significant results as ER barplot
@@ -500,7 +501,7 @@ for (i in 1:length(ora_objects)) {
         ggsave(plot = p2, filename = file.path(resultsDir,paste0("functional/ORA_results/cebi_lemuemapplot_", names(ora_objects)[i],".png")), dpi = 300,units = "in",width = 8, height = 8)
       
         # Cenet plot of 10 most significant terms
-        p3 <- cnetplot(ora_objects[[i]], showCategory = 5, cex.params = list(category_label = 0.6))
+        p3 <- cnetplot(ora_objects[[i]], showCategory = 7, cex.params = list(category_label = 0.8))
         ggsave(plot = p3, filename = file.path(resultsDir,paste0("functional/ORA_results/cebi_lemucnetplot_", names(ora_objects)[i],".png")), dpi = 300, units = "in",width = 6, height = 6)
         } else {
           # plot significant results as ER barplot
